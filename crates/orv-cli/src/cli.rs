@@ -2,17 +2,26 @@
 //!
 //! Exit codes follow SPEC §10: `0` ok, `1` program/diagnostic error, `2`
 //! environment or usage error, `130` interrupted.
+//!
+//! Output uses explicit `LF` line endings instead of `println!`, so the bytes
+//! on stdout do not depend on the platform (`println!` emits `CRLF` on
+//! Windows). Golden expectations are LF-only, and the harness must not be the
+//! only thing papering over the difference — see ADR 0002.
 
+use std::io::{self, Write};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
 /// Exit code for a successful run (SPEC §10).
-///
-/// The remaining documented codes (`1` program error, `2` usage/environment,
-/// `130` interrupted) are introduced by the milestones that can produce them,
-/// to keep M0 free of unused code.
 pub const EXIT_OK: u8 = 0;
+
+/// Exit code used when stdout cannot be written.
+///
+/// That is an environment problem rather than a program error, so SPEC §10's
+/// code `2` applies. Used for the same reason as [`io::Error`] handling
+/// elsewhere: no `panic!` for a user-visible failure.
+pub const EXIT_IO: u8 = 2;
 
 /// The `orv` command line.
 #[derive(Debug, Parser)]
@@ -39,11 +48,23 @@ pub enum Command {
 pub fn run() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Version => {
-            println!("{}", version_line());
-            ExitCode::from(EXIT_OK)
-        }
+        Command::Version => match print_lf(&version_line()) {
+            Ok(()) => ExitCode::from(EXIT_OK),
+            Err(_) => ExitCode::from(EXIT_IO),
+        },
     }
+}
+
+/// Writes `line` to stdout followed by a single `LF`.
+///
+/// Deliberately not `println!`: that macro's newline is platform-dependent
+/// (`CRLF` on Windows), and golden tests compare raw bytes.
+fn print_lf(line: &str) -> io::Result<()> {
+    let stdout = io::stdout();
+    let mut lock = stdout.lock();
+    lock.write_all(line.as_bytes())?;
+    lock.write_all(b"\n")?;
+    lock.flush()
 }
 
 /// The single line printed by `orv version`.

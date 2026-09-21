@@ -43,6 +43,33 @@ struct Header {
     exit: i32,
 }
 
+/// `orv version` must emit `LF` bytes on every OS (ADR 0002).
+///
+/// This asserts on the **raw** stdout bytes, before any normalization, so the
+/// harness's CRLF folding cannot mask a `CR` produced by the binary itself.
+/// If this fails on Windows, the fix belongs in the CLI, not here.
+#[test]
+fn version_stdout_contains_no_carriage_return() {
+    let output = run_command(&orv_binary(), &["version".to_owned()]).expect("running orv version");
+
+    let stdout = &output.stdout;
+    assert!(
+        !stdout.contains(&b'\r'),
+        "orv version wrote a CR byte on {}: {:?}",
+        std::env::consts::OS,
+        stdout
+    );
+    assert!(
+        stdout.ends_with(b"\n"),
+        "orv version must end with a single LF, got {stdout:?}"
+    );
+    assert_eq!(
+        stdout.iter().filter(|b| **b == b'\n').count(),
+        1,
+        "orv version must print exactly one line, got {stdout:?}"
+    );
+}
+
 #[test]
 fn golden_suite() {
     let golden_dir = workspace_root().join(GOLDEN_DIR);
