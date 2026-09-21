@@ -18,17 +18,19 @@ pub struct Cursor<'a> {
 impl<'a> Cursor<'a> {
     /// Creates a cursor at the start of `text`.
     ///
-    /// A leading UTF-8 BOM is skipped, as required by SPEC §5.1.
+    /// The cursor does **not** strip a BOM: `SourceMap::add` already did that
+    /// when the file was loaded (SPEC §5.1), so any BOM still present here is
+    /// content the lexer must classify — a second BOM in a row is an invalid
+    /// character (`E0001`), not more whitespace.
     pub fn new(text: &'a str) -> Self {
-        let trimmed = text.strip_prefix('\u{feff}').unwrap_or(text);
         Self {
-            text: trimmed,
-            bytes: trimmed.as_bytes(),
+            text,
+            bytes: text.as_bytes(),
             pos: 0,
         }
     }
 
-    /// The whole (BOM-stripped) source text.
+    /// The whole source text.
     pub const fn text(&self) -> &'a str {
         self.text
     }
@@ -94,11 +96,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn skips_utf8_bom() {
+    fn cursor_does_not_strip_a_bom() {
+        // BOM stripping is `SourceMap::add`'s job; a BOM reaching the cursor is
+        // ordinary content and must be visible.
         let c = Cursor::new("\u{feff}fn");
         assert_eq!(c.pos(), 0);
-        assert_eq!(c.peek(), Some(b'f'));
-        assert_eq!(c.text(), "fn");
+        assert_eq!(c.peek(), Some(0xef));
+        assert_eq!(c.text(), "\u{feff}fn");
     }
 
     #[test]
