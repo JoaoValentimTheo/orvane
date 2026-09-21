@@ -438,6 +438,25 @@ fn maximal_munch_prefers_longer_operators() {
 }
 
 #[test]
+fn triple_dash_is_not_a_single_operator() {
+    // `-->` is not in §5.1: it is `-` followed by `->`.
+    assert_eq!(
+        lex_kinds("a-->b"),
+        vec![
+            ident("a"),
+            TokenKind::Minus,
+            TokenKind::Arrow,
+            ident("b")
+        ]
+    );
+    // Sanity: the intermediate `--` is still two `-`, never a token.
+    assert_eq!(
+        lex_kinds("a--b"),
+        vec![ident("a"), TokenKind::Minus, TokenKind::Minus, ident("b")]
+    );
+}
+
+#[test]
 fn hash_without_brace_is_an_error() {
     let codes = lex_errors("#");
     assert_eq!(codes, vec!["E0001"]);

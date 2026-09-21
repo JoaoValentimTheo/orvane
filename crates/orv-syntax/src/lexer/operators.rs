@@ -61,11 +61,8 @@ impl Lexer<'_> {
     pub(super) fn minus(&mut self) {
         let start = self.cursor.pos();
         match self.cursor.peek_byte(1) {
-            Some(b'-') if self.cursor.peek_byte(2) == Some(b'>') => {
-                // Not in the operator table, but a clear maximal-munch win.
-                self.cursor.advance(3);
-                self.push(TokenKind::Arrow, start, self.cursor.pos());
-            }
+            // `-->` is not in §5.1: `-` is emitted on its own and the following
+            // `->` lexes normally, so `a-->b` is `Ident Minus Arrow Ident`.
             Some(b'>') => {
                 self.cursor.advance(2);
                 self.push(TokenKind::Arrow, start, self.cursor.pos());
