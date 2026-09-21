@@ -1,0 +1,15 @@
+[package]
+name = "orv-pymod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Python extension module `orvane` (built with maturin)."
+
+[lib]
+name = "orvane"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+orv-syntax.workspace = true
