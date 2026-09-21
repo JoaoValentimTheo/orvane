@@ -1,0 +1,3 @@
+// orv: tokens %f
+// Every reserved keyword, in §5.1 order.
+fn intent how given ensure when via priority data enum let mut if else match for in while return break continue use as try fail true false none and or not pub test

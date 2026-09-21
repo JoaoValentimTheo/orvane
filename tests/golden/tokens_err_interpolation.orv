@@ -1,0 +1,5 @@
+// orv: tokens %f
+// exit: 1
+// E0006: interpolação inválida (`}` sem `{`, e `{}` vazio).
+let a = "x}y"
+let b = "{}"

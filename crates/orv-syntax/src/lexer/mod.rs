@@ -155,7 +155,11 @@ impl<'a> Lexer<'a> {
             b']' => self.closer(TokenKind::RBracket, Delimiter::Bracket, 1),
             // `}` closes either a block `{` or a map `#{`; the opener on top of
             // the stack decides which.
-            b'}' => self.closer_any(TokenKind::RBrace, &[Delimiter::Brace, Delimiter::HashBrace], 1),
+            b'}' => self.closer_any(
+                TokenKind::RBrace,
+                &[Delimiter::Brace, Delimiter::HashBrace],
+                1,
+            ),
             b'#' if self.cursor.peek_byte(1) == Some(b'{') => {
                 self.opener(TokenKind::HashLBrace, Delimiter::HashBrace, 2);
             }
@@ -421,14 +425,15 @@ impl<'a> Lexer<'a> {
         } else {
             "`!` is only valid as `!=`; `&`, `|`, `@`, `$`, `\\` and backticks are not operators"
         };
-        self.diagnostics.push(
-            Diagnostic::error("E0001", "invalid character", span).with_help(help),
-        );
+        self.diagnostics
+            .push(Diagnostic::error("E0001", "invalid character", span).with_help(help));
     }
 
     /// Pushes a token covering `[start, end)`.
     fn push(&mut self, kind: TokenKind, start: usize, end: usize) {
-        self.tokens
-            .push(Token::new(kind, Span::new(self.file, start as u32, end as u32)));
+        self.tokens.push(Token::new(
+            kind,
+            Span::new(self.file, start as u32, end as u32),
+        ));
     }
 }

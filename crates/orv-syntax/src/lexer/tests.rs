@@ -118,7 +118,10 @@ fn py_is_lexed_as_an_identifier() {
 
 #[test]
 fn identifiers_allow_underscores_and_digits() {
-    assert_eq!(lex_kinds("_x1 __ f2b"), vec![ident("_x1"), ident("__"), ident("f2b")]);
+    assert_eq!(
+        lex_kinds("_x1 __ f2b"),
+        vec![ident("_x1"), ident("__"), ident("f2b")]
+    );
 }
 
 #[test]
@@ -289,8 +292,40 @@ fn interpolation_allows_nested_strings_and_braces() {
 }
 
 #[test]
+fn escaped_quotes_inside_interpolation_do_not_close_the_string() {
+    // `\"` is a literal quote, so the interpolation runs to the real `}`.
+    let kinds = lex_kinds(r#""{f(\"a\")}""#);
+    assert_eq!(
+        kinds,
+        vec![str_parts(vec![StrPart::Expr {
+            src: r#"f(\"a\")"#.to_owned(),
+            span: crate::Span::new(FileId(0), 2, 10),
+        }])]
+    );
+}
+
+#[test]
+fn literal_braces_around_an_interpolation() {
+    // `{{` ... `}}` are literal braces; `{x}` between them interpolates.
+    assert_eq!(
+        lex_kinds(r#""{{{x}}}""#),
+        vec![str_parts(vec![
+            lit("{"),
+            StrPart::Expr {
+                src: "x".to_owned(),
+                span: crate::Span::new(FileId(0), 4, 5),
+            },
+            lit("}"),
+        ])]
+    );
+}
+
+#[test]
 fn non_ascii_inside_strings_is_fine() {
-    assert_eq!(lex_kinds(r#""日本語""#), vec![str_parts(vec![lit("日本語")])]);
+    assert_eq!(
+        lex_kinds(r#""日本語""#),
+        vec![str_parts(vec![lit("日本語")])]
+    );
 }
 
 #[test]
@@ -312,7 +347,11 @@ fn unterminated_string_does_not_stop_the_lexer() {
     // Recovery: tokens after the broken string are still produced.
     let (tokens, diagnostics) = lex_src("\"abc\nfn main");
     assert_eq!(diagnostics.len(), 1);
-    let kinds: Vec<TokenKind> = tokens.into_iter().filter(|t| !t.is_eof()).map(|t| t.kind).collect();
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
     assert_eq!(kinds, vec![TokenKind::Kw(Keyword::Fn), ident("main")]);
 }
 
@@ -502,7 +541,10 @@ fn lone_carriage_return_is_whitespace() {
 
 #[test]
 fn bom_is_ignored() {
-    assert_eq!(lex_kinds("\u{feff}fn main"), vec![TokenKind::Kw(Keyword::Fn), ident("main")]);
+    assert_eq!(
+        lex_kinds("\u{feff}fn main"),
+        vec![TokenKind::Kw(Keyword::Fn), ident("main")]
+    );
 }
 
 #[test]

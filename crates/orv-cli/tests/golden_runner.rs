@@ -9,6 +9,10 @@
 //! // exit: <code>                    <- optional, defaults to 0
 //! ```
 //!
+//! `%f` in the command line expands to the golden file's path relative to the
+//! workspace root, so a case can operate on its own source:
+//! `// orv: tokens %f`.
+//!
 //! The harness is **strict** (ADR 0004):
 //!
 //! * `<name>.out` — expected **stdout**, compared byte for byte. When the file
@@ -113,12 +117,9 @@ fn run_case(orv_file: &Path, orv_bin: &Path) -> Result<(), String> {
         format!("{name}: missing `// orv: <subcommand>` header on the first non-empty line")
     })?;
 
-    let output = run_command(orv_bin, &header.argv).map_err(|err| {
-        format!(
-            "{name}: cannot run `{orv_bin:?} {}`: {err}",
-            header.argv.join(" ")
-        )
-    })?;
+    let argv = resolve_argv(&header.argv, orv_file);
+    let output = run_command(orv_bin, &argv)
+        .map_err(|err| format!("{name}: cannot run `{orv_bin:?} {}`: {err}", argv.join(" ")))?;
 
     let stem = orv_file.with_extension("");
     let mut problems: Vec<String> = Vec::new();
@@ -186,6 +187,25 @@ fn check_diagnostics(
             Ok(())
         }
     }
+}
+
+/// Replaces the `%f` placeholder in the header with the golden file's path,
+/// relative to the workspace root (the child's working directory).
+///
+/// A case that lexes or checks its own file writes `// orv: tokens %f`.
+fn resolve_argv(argv: &[String], orv_file: &Path) -> Vec<String> {
+    let root = workspace_root();
+    let relative = orv_file.strip_prefix(&root).unwrap_or(orv_file);
+    let path = relative.to_string_lossy().replace('\\', "/");
+    argv.iter()
+        .map(|arg| {
+            if arg == "%f" {
+                path.clone()
+            } else {
+                arg.clone()
+            }
+        })
+        .collect()
 }
 
 /// Reads the header lines and extracts the command and the expected exit code.
@@ -341,11 +361,20 @@ fn collect_orv_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Runs the `orv` binary with `argv[0]` as the subcommand.
+///
+/// The child runs with the **workspace root** as its working directory, because
+/// header arguments are written relative to it (e.g. `tokens tests/golden/x.orv`)
+/// while the test process itself starts in the crate directory.
 fn run_command(orv_bin: &Path, argv: &[String]) -> io::Result<Output> {
     let Some((subcommand, args)) = argv.split_first() else {
         return Err(io::Error::other("empty command header"));
     };
-    Command::new(orv_bin).arg(subcommand).args(args).output()
+    Command::new(orv_bin)
+        .arg(subcommand)
+        .args(args)
+        .current_dir(workspace_root())
+        .output()
 }
 
 /// Resolves the binary under test.
@@ -409,6 +438,43 @@ mod harness_unit_tests {
             parse_header(src),
             Some(header(&["run", "examples/fib.orv"], 0))
         );
+    }
+
+    #[test]
+    fn file_placeholder_expands_to_a_workspace_relative_path() {
+        let golden = workspace_root().join("tests/golden/x.orv");
+        let argv = vec!["tokens".to_owned(), "%f".to_owned()];
+        assert_eq!(
+            resolve_argv(&argv, &golden),
+            vec!["tokens".to_owned(), "tests/golden/x.orv".to_owned()]
+        );
+    }
+
+    #[test]
+    fn file_placeholder_expands_in_any_position_and_leaves_other_args_alone() {
+        let golden = workspace_root().join("tests/golden/x.orv");
+        let argv = vec![
+            "run".to_owned(),
+            "--json".to_owned(),
+            "%f".to_owned(),
+            "extra".to_owned(),
+        ];
+        assert_eq!(
+            resolve_argv(&argv, &golden),
+            vec![
+                "run".to_owned(),
+                "--json".to_owned(),
+                "tests/golden/x.orv".to_owned(),
+                "extra".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn argv_without_placeholder_is_unchanged() {
+        let golden = workspace_root().join("tests/golden/x.orv");
+        let argv = vec!["version".to_owned()];
+        assert_eq!(resolve_argv(&argv, &golden), argv);
     }
 
     #[test]

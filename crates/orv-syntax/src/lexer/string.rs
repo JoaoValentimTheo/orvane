@@ -11,8 +11,8 @@
 //! * `E0006` — malformed interpolation (`}` without `{`, or empty `{}`).
 
 use crate::diagnostic::Diagnostic;
-use crate::span::Span;
 use crate::source::FileId;
+use crate::span::Span;
 
 use super::cursor::Cursor;
 use super::token::StrPart;
@@ -44,8 +44,12 @@ pub(super) fn scan_string(
             None => {
                 // Ran off the end of the file without a closing quote.
                 diagnostics.push(
-                    Diagnostic::error("E0002", "unterminated string literal", span(file, open, start))
-                        .with_help("add a closing `\"`"),
+                    Diagnostic::error(
+                        "E0002",
+                        "unterminated string literal",
+                        span(file, open, start),
+                    )
+                    .with_help("add a closing `\"`"),
                 );
                 return StringOutcome::Invalid;
             }
@@ -188,6 +192,13 @@ fn scan_interpolation(
                     .with_help("add a closing `}` and `\"`"),
                 );
                 return None;
+            }
+            Some(b'\\') => {
+                // Outside a nested string, `\` escapes the next character, so
+                // `\"` is a literal quote and must not open a nested string.
+                // This is what makes `"{f(\"a\")}"` work.
+                cursor.advance(1);
+                cursor.bump_char();
             }
             Some(b'"') => {
                 // Skip a nested string so its braces do not affect depth.

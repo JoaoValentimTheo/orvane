@@ -1,0 +1,3 @@
+// orv: tokens %f
+// Escapes, literal braces, interpolation, and nested strings/braces.
+"plain" "" "a\n\t\r\\\"\{\}" "Olá {name}" "{{literal}}" "{a + b}" "{f(\"a\")}" "{{{x}}}"

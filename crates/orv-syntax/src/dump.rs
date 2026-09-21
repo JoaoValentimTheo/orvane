@@ -14,7 +14,6 @@ use std::fmt::Write as _;
 
 use crate::source::SourceFile;
 
-
 use crate::lexer::{StrPart, Token, TokenKind};
 
 /// Renders a whole token stream.

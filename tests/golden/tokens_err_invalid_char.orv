@@ -1,0 +1,4 @@
+// orv: tokens %f
+// exit: 1
+// E0001: caractere inválido. O lexer continua depois dele.
+let a @ b

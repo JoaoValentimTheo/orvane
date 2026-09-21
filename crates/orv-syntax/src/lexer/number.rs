@@ -95,9 +95,15 @@ fn scan_decimal(
         is_float = true;
         let after_e = cursor.pos() + 1;
         cursor.advance(exponent_len);
-        let sign_len = usize::from(matches!(cursor.text().as_bytes().get(after_e), Some(b'+' | b'-')));
+        let sign_len = usize::from(matches!(
+            cursor.text().as_bytes().get(after_e),
+            Some(b'+' | b'-')
+        ));
         let exp_digits_start = after_e + sign_len;
-        let exp_digits = cursor.text().get(exp_digits_start..cursor.pos()).unwrap_or("");
+        let exp_digits = cursor
+            .text()
+            .get(exp_digits_start..cursor.pos())
+            .unwrap_or("");
         if exp_digits.is_empty() || !exp_digits.bytes().all(|b| b.is_ascii_digit()) {
             return invalid(
                 cursor,
@@ -195,10 +201,7 @@ fn is_digit_in_radix(b: u8, radix: u32) -> bool {
 
 /// Whether the next two bytes are `.<digit>`.
 fn next_starts_fraction(cursor: &Cursor<'_>) -> bool {
-    cursor.peek() == Some(b'.')
-        && cursor
-            .peek_byte(1)
-            .is_some_and(|b| b.is_ascii_digit())
+    cursor.peek() == Some(b'.') && cursor.peek_byte(1).is_some_and(|b| b.is_ascii_digit())
 }
 
 /// The byte length of the exponent part (`e`, optional sign, digits), or `None`
@@ -240,9 +243,8 @@ fn invalid(
     if let Some(help) = help {
         diagnostic = diagnostic.with_help(help);
     } else {
-        diagnostic = diagnostic.with_help(
-            "`_` may only appear between digits; `0x`/`0b` need at least one digit",
-        );
+        diagnostic = diagnostic
+            .with_help("`_` may only appear between digits; `0x`/`0b` need at least one digit");
     }
     diagnostics.push(diagnostic);
     NumberOutcome::Invalid

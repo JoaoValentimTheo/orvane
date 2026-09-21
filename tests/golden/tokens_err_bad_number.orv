@@ -1,0 +1,6 @@
+// orv: tokens %f
+// exit: 1
+// E0005: literal numérico inválido.
+let x = 0x
+let y = 1__
+let z = 9223372036854775808
