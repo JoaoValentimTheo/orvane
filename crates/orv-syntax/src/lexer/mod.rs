@@ -14,6 +14,8 @@
 mod cursor;
 mod number;
 mod string;
+#[cfg(test)]
+mod tests;
 mod token;
 
 pub use token::{Keyword, StrPart, Token, TokenKind};
@@ -147,7 +149,9 @@ impl<'a> Lexer<'a> {
             b'{' => self.opener(TokenKind::LBrace, Delimiter::Brace, 1),
             b')' => self.closer(TokenKind::RParen, Delimiter::Paren, 1),
             b']' => self.closer(TokenKind::RBracket, Delimiter::Bracket, 1),
-            b'}' => self.closer(TokenKind::RBrace, Delimiter::Brace, 1),
+            // `}` closes either a block `{` or a map `#{`; the opener on top of
+            // the stack decides which.
+            b'}' => self.closer_any(TokenKind::RBrace, &[Delimiter::Brace, Delimiter::HashBrace], 1),
             b'#' if self.cursor.peek_byte(1) == Some(b'{') => {
                 self.opener(TokenKind::HashLBrace, Delimiter::HashBrace, 2);
             }
@@ -230,8 +234,14 @@ impl<'a> Lexer<'a> {
     /// An unmatched closer is emitted normally; the parser reports it. It must
     /// never panic.
     fn closer(&mut self, kind: TokenKind, expected: Delimiter, len: usize) {
+        self.closer_any(kind, &[expected], len);
+    }
+
+    /// Emits a closing token that may match more than one opener, popping the
+    /// innermost when it matches. An unmatched closer is still emitted.
+    fn closer_any(&mut self, kind: TokenKind, expected: &[Delimiter], len: usize) {
         let start = self.cursor.pos();
-        if self.delimiters.last() == Some(&expected) {
+        if self.delimiters.last().is_some_and(|d| expected.contains(d)) {
             self.delimiters.pop();
         }
         self.cursor.advance(len);
@@ -461,11 +471,17 @@ impl<'a> Lexer<'a> {
     }
 
     /// Emits the pending `Newline` unless the innermost delimiter suppresses it.
+    ///
+    /// A `Newline` is never emitted before the first real token, so leading
+    /// blank lines produce no token at all (§5.1).
     fn flush_newline(&mut self) {
         if !self.pending_newline {
             return;
         }
         self.pending_newline = false;
+        if self.tokens.iter().all(|t| t.is_newline()) {
+            return;
+        }
         let suppressed = self
             .delimiters
             .last()

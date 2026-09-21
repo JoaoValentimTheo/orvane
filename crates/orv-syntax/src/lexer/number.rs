@@ -46,15 +46,15 @@ pub(super) fn scan_number(
 
     // Skip the `0x` / `0b` prefix and read digits in that radix.
     cursor.advance(2);
-    let digits_start = cursor.pos();
     let (digits, malformed) = scan_digits(cursor, radix);
     if malformed || digits.is_empty() {
         return invalid(cursor, file, diagnostics, start, cursor.pos(), None);
     }
 
     let end = cursor.pos();
-    let text = cursor.text().get(digits_start..end).unwrap_or("");
-    match i64::from_str_radix(text, radix) {
+    // Parse the separator-free digit string, not the raw slice: `0x1_0` would
+    // otherwise be rejected by `from_str_radix`.
+    match i64::from_str_radix(&digits, radix) {
         Ok(value) => NumberOutcome::Int(value),
         Err(_) => invalid(
             cursor,
