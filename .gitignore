@@ -1,0 +1,19 @@
+/target
+**/*.rs.bk
+.DS_Store
+
+# Python / maturin
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.so
+*.pyd
+*.whl
+build/
+dist/
+wheels/
+.pytest_cache/
+
+# Insta snapshot pending files
+*.snap.new
