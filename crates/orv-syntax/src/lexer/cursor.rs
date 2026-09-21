@@ -87,11 +87,6 @@ impl<'a> Cursor<'a> {
         self.pos = self.pos.saturating_add(ch.len_utf8()).min(self.bytes.len());
         Some(ch)
     }
-
-    /// Creates a span covering the bytes between two offsets.
-    pub const fn span(&self, file: crate::source::FileId, start: usize, end: usize) -> crate::Span {
-        crate::Span::new(file, start as u32, end as u32)
-    }
 }
 
 #[cfg(test)]
