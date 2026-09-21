@@ -6,12 +6,19 @@
 //!
 //! ```text
 //! // orv: <subcommand> [args...]     <- header, first non-empty line
+//! // exit: <code>                    <- optional, defaults to 0
 //! ```
 //!
-//! * `<name>.out` — expected **stdout**, compared byte for byte.
+//! The harness is **strict** (ADR 0004):
+//!
+//! * `<name>.out` — expected **stdout**, compared byte for byte. When the file
+//!   is absent, the expected stdout is the empty string, so a case that prints
+//!   anything must ship a `.out`.
 //! * `<name>.err` — expected **diagnostics**, compared against the normalized
-//!   `CODE:linha:coluna: mensagem` lines from stderr (SPEC §8.1). The pretty
-//!   `ariadne` drawing is deliberately ignored so the expectation stays stable.
+//!   `CODE:linha:coluna: mensagem` lines from stderr (SPEC §8.1). When the file
+//!   is absent, the case must produce **zero** diagnostics. The pretty `ariadne`
+//!   drawing is deliberately ignored so the expectation stays stable.
+//! * `// exit: N` — expected process exit status, default `0`.
 //!
 //! Snapshots are never updated automatically (SPEC §11 item 2): a mismatch is a
 //! test failure, and fixing it is a deliberate edit.
@@ -26,6 +33,15 @@ const GOLDEN_DIR: &str = "tests/golden";
 
 /// Environment variable that points at the `orv` binary under test.
 const ORV_BIN_ENV: &str = "ORV_BIN";
+
+/// A golden case's header: the command to run and the expected exit code.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Header {
+    /// `argv[0]` is the `orv` subcommand.
+    argv: Vec<String>,
+    /// Expected process exit status; `0` unless `// exit: N` overrides it.
+    exit: i32,
+}
 
 #[test]
 fn golden_suite() {
@@ -66,38 +82,23 @@ fn run_case(orv_file: &Path, orv_bin: &Path) -> Result<(), String> {
     let source = std::fs::read_to_string(orv_file)
         .map_err(|err| format!("{name}: cannot read {}: {err}", orv_file.display()))?;
 
-    let argv = parse_header(&source).ok_or_else(|| {
+    let header = parse_header(&source).ok_or_else(|| {
         format!("{name}: missing `// orv: <subcommand>` header on the first non-empty line")
     })?;
 
-    let output = run_command(orv_bin, &argv)
-        .map_err(|err| format!("{name}: cannot run `{orv_bin:?} {}`: {err}", argv.join(" ")))?;
+    let output = run_command(orv_bin, &header.argv).map_err(|err| {
+        format!(
+            "{name}: cannot run `{orv_bin:?} {}`: {err}",
+            header.argv.join(" ")
+        )
+    })?;
 
     let stem = orv_file.with_extension("");
     let mut problems: Vec<String> = Vec::new();
 
-    let out_path = stem.with_extension("out");
-    if out_path.exists() {
-        let expected = read_expectation(&out_path)?;
-        let actual = decode_output(&output.stdout);
-        if actual != expected {
-            problems.push(diff_report("stdout", &expected, &actual));
-        }
-    } else {
-        problems.push(format!(
-            "{name}: missing {} (every golden case needs an expectation)",
-            file_label(&out_path)
-        ));
-    }
-
-    let err_path = stem.with_extension("err");
-    if err_path.exists() {
-        let expected = read_expectation(&err_path)?;
-        let actual = normalize_diagnostics(&decode_output(&output.stderr));
-        if actual != expected {
-            problems.push(diff_report("diagnostics", &expected, &actual));
-        }
-    }
+    check_exit_code(&header, &output, &stem, &mut problems);
+    check_stdout(&output, &stem, &mut problems)?;
+    check_diagnostics(&output, &stem, &mut problems)?;
 
     if problems.is_empty() {
         Ok(())
@@ -106,13 +107,103 @@ fn run_case(orv_file: &Path, orv_bin: &Path) -> Result<(), String> {
     }
 }
 
-/// Reads the first non-empty line and extracts the command after `// orv:`.
-fn parse_header(source: &str) -> Option<Vec<String>> {
-    let line = source.lines().find(|l| !l.trim().is_empty())?;
+/// Compares the process exit code with the header's expectation.
+fn check_exit_code(header: &Header, output: &Output, stem: &Path, problems: &mut Vec<String>) {
+    let actual = output.status.code();
+    if actual == Some(header.exit) {
+        return;
+    }
+    problems.push(format!(
+        "--- {} (exit status) ---\nexpected: {}\nactual: {}",
+        file_label(stem),
+        header.exit,
+        actual.map_or_else(|| "<terminated by signal>".to_owned(), |c| c.to_string()),
+    ));
+}
+
+/// Compares stdout, requiring an empty stdout when `.out` is absent.
+fn check_stdout(output: &Output, stem: &Path, problems: &mut Vec<String>) -> Result<(), String> {
+    let out_path = stem.with_extension("out");
+    let expected = if out_path.exists() {
+        Some(read_expectation(&out_path)?)
+    } else {
+        None
+    };
+    let actual = decode_output(&output.stdout);
+    match compare_bytes("stdout", expected.as_deref(), &actual) {
+        Ok(()) => Ok(()),
+        Err(report) => {
+            problems.push(report);
+            Ok(())
+        }
+    }
+}
+
+/// Compares diagnostics, requiring zero diagnostics when `.err` is absent.
+fn check_diagnostics(
+    output: &Output,
+    stem: &Path,
+    problems: &mut Vec<String>,
+) -> Result<(), String> {
+    let err_path = stem.with_extension("err");
+    let expected = if err_path.exists() {
+        Some(read_expectation(&err_path)?)
+    } else {
+        None
+    };
+    let actual = normalize_diagnostics(&decode_output(&output.stderr));
+    match compare_bytes("diagnostics", expected.as_deref(), &actual) {
+        Ok(()) => Ok(()),
+        Err(report) => {
+            problems.push(report);
+            Ok(())
+        }
+    }
+}
+
+/// Reads the header lines and extracts the command and the expected exit code.
+///
+/// The first non-empty line must be `// orv: <subcommand> [args...]`. A later
+/// line may be `// exit: N`; `N` is the expected exit status and defaults to `0`.
+/// Unknown `// key:` lines are ignored so the header can grow without breaking
+/// older cases.
+fn parse_header(source: &str) -> Option<Header> {
+    let lines: Vec<&str> = source.lines().collect();
+    let first = lines.iter().position(|l| !l.trim().is_empty())?;
+    let argv = parse_command_line(lines.get(first)?)?;
+    let exit = lines
+        .iter()
+        .skip(first + 1)
+        .find_map(|line| parse_exit_line(line))
+        .unwrap_or(0);
+    Some(Header { argv, exit })
+}
+
+fn parse_command_line(line: &str) -> Option<Vec<String>> {
     let rest = line.trim().strip_prefix("//")?.trim();
     let rest = rest.strip_prefix("orv:")?;
     let argv: Vec<String> = rest.split_whitespace().map(str::to_owned).collect();
     if argv.is_empty() { None } else { Some(argv) }
+}
+
+fn parse_exit_line(line: &str) -> Option<i32> {
+    let rest = line.trim().strip_prefix("//")?.trim();
+    let rest = rest.strip_prefix("exit:")?.trim();
+    rest.parse::<i32>().ok()
+}
+
+/// Compares one stream's text with its expectation.
+///
+/// `expected` is `None` when the expectation file is absent, in which case the
+/// stream must be empty. This is the single implementation of the strict rule,
+/// so `check_stdout`/`check_diagnostics` cannot drift apart.
+fn compare_bytes(what: &str, expected: Option<&str>, actual: &str) -> Result<(), String> {
+    let expected = expected.unwrap_or("");
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(diff_report(what, expected, actual))
+    }
 }
 
 fn read_expectation(path: &Path) -> Result<String, String> {
@@ -265,10 +356,17 @@ fn workspace_root() -> PathBuf {
 mod harness_unit_tests {
     use super::*;
 
+    fn header(argv: &[&str], exit: i32) -> Header {
+        Header {
+            argv: argv.iter().map(|s| (*s).to_owned()).collect(),
+            exit,
+        }
+    }
+
     #[test]
     fn header_parsing_ignores_blank_lines() {
         let src = "\n\n// orv: version\norvane\n";
-        assert_eq!(parse_header(src), Some(vec!["version".to_owned()]));
+        assert_eq!(parse_header(src), Some(header(&["version"], 0)));
     }
 
     #[test]
@@ -282,8 +380,48 @@ mod harness_unit_tests {
         let src = "// orv: run examples/fib.orv\n";
         assert_eq!(
             parse_header(src),
-            Some(vec!["run".to_owned(), "examples/fib.orv".to_owned()])
+            Some(header(&["run", "examples/fib.orv"], 0))
         );
+    }
+
+    #[test]
+    fn header_defaults_exit_to_zero() {
+        assert_eq!(
+            parse_header("// orv: version\n"),
+            Some(header(&["version"], 0))
+        );
+    }
+
+    #[test]
+    fn header_parses_exit_override() {
+        let src = "// orv: check broken.orv\n// exit: 1\n";
+        assert_eq!(parse_header(src), Some(header(&["check", "broken.orv"], 1)));
+    }
+
+    #[test]
+    fn header_parses_signal_exit_code() {
+        let src = "// orv: repl\n// exit: 130\n";
+        assert_eq!(parse_header(src), Some(header(&["repl"], 130)));
+    }
+
+    #[test]
+    fn header_ignores_unknown_and_malformed_directives() {
+        // Unknown keys are ignored (forward compatible) ...
+        let src = "// orv: version\n// something: else\n";
+        assert_eq!(parse_header(src), Some(header(&["version"], 0)));
+
+        // ... and a malformed `exit:` falls back to the default rather than
+        // silently inventing a code.
+        let src = "// orv: version\n// exit: soon\n";
+        assert_eq!(parse_header(src), Some(header(&["version"], 0)));
+    }
+
+    #[test]
+    fn header_requires_the_command_line_to_come_first() {
+        // The `orv:` line is the header anchor; a directive before it is not a
+        // valid header, so the case is rejected instead of guessing.
+        let src = "// exit: 7\n// orv: version\n";
+        assert_eq!(parse_header(src), None);
     }
 
     #[test]
@@ -324,5 +462,91 @@ mod harness_unit_tests {
         assert_eq!(decode_output(b"a\nb\n"), "a\nb\n");
         assert_eq!(normalize_line_endings("a\rb"), "a\rb");
         assert_eq!(normalize_line_endings("plain"), "plain");
+    }
+
+    // --- Strictness rules, proved with comparisons that MUST fail -----------
+    //
+    // `check_stdout`/`check_diagnostics` work on a real `Output`, which cannot
+    // be constructed portably, so the strict rules are proved through
+    // `compare_bytes`: the same predicate the checks delegate to.
+
+    fn strict_stdout(actual: &str, expected: Option<&str>) -> Result<(), String> {
+        compare_bytes("stdout", expected, actual)
+    }
+
+    fn strict_diagnostics(actual: &str, expected: Option<&str>) -> Result<(), String> {
+        compare_bytes("diagnostics", expected, actual)
+    }
+
+    #[test]
+    fn missing_out_requires_empty_stdout() {
+        assert!(
+            strict_stdout("", None).is_ok(),
+            "empty stdout with no .out is fine"
+        );
+        let err = strict_stdout("hello\n", None).expect_err("printing without .out must fail");
+        assert!(err.contains("stdout mismatch"), "got: {err}");
+        assert!(err.contains("hello"), "got: {err}");
+    }
+
+    #[test]
+    fn missing_err_requires_zero_diagnostics() {
+        assert!(
+            strict_diagnostics("", None).is_ok(),
+            "no diagnostics with no .err is fine"
+        );
+        let err = strict_diagnostics("E0101:2:5: unexpected token\n", None)
+            .expect_err("diagnostics without .err must fail");
+        assert!(err.contains("diagnostics mismatch"), "got: {err}");
+        assert!(err.contains("E0101:2:5"), "got: {err}");
+    }
+
+    #[test]
+    fn present_out_must_match_exactly() {
+        assert!(strict_stdout("ok\n", Some("ok\n")).is_ok());
+        // A trailing newline difference is a failure, not a rounding error.
+        assert!(strict_stdout("ok\n", Some("ok")).is_err());
+        assert!(strict_stdout("ok", Some("ok\n")).is_err());
+    }
+
+    #[test]
+    fn exit_code_check_accepts_matching_status() {
+        let output = command_output(&["version"]);
+        let mut problems = Vec::new();
+        check_exit_code(
+            &header(&["version"], 0),
+            &output,
+            Path::new("t.out"),
+            &mut problems,
+        );
+        assert!(problems.is_empty(), "got: {problems:?}");
+    }
+
+    #[test]
+    fn exit_code_check_rejects_matching_status_when_header_disagrees() {
+        let output = command_output(&["version"]);
+        let mut problems = Vec::new();
+        check_exit_code(
+            &header(&["version"], 1),
+            &output,
+            Path::new("t.out"),
+            &mut problems,
+        );
+        assert_eq!(problems.len(), 1, "a wrong expectation must be reported");
+        assert!(problems[0].contains("exit status"), "got: {}", problems[0]);
+        assert!(problems[0].contains("expected: 1"), "got: {}", problems[0]);
+    }
+
+    #[test]
+    fn an_unknown_subcommand_actually_exits_nonzero() {
+        // Guards the `// exit: N` feature against a CLI that always exits 0.
+        let output = command_output(&["definitely-not-a-subcommand"]);
+        assert_eq!(output.status.code(), Some(2));
+    }
+
+    /// Runs the `orv` binary under test with `argv[0]` as the subcommand.
+    fn command_output(argv: &[&str]) -> Output {
+        let argv: Vec<String> = argv.iter().map(|s| (*s).to_owned()).collect();
+        run_command(&orv_binary(), &argv).expect("running the orv binary")
     }
 }
