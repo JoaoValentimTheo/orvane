@@ -67,7 +67,7 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 | Código | Mensagem | Exemplo mínimo | Status |
 |---|---|---|---|
 | `E0101` | token inesperado | `fn () {}` | M2 |
-| `E0102` | esperado X, encontrado Y | `let = 1` | M2 |
+| `E0102` | esperado X, encontrado Y | `let = 1` · `1.2.3` (esperado identificador após `.`) | M2 |
 | `E0103` | bloco não fechado | `fn main() {` | M2 |
 
 ## E02xx — resolução

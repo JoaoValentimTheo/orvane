@@ -167,3 +167,31 @@ fn chained_dots_are_not_a_number_error() {
         vec![TokenKind::Float(1.2), TokenKind::Dot, TokenKind::Int(3)]
     );
 }
+
+#[test]
+fn float_dot_int_is_a_syntax_error_by_grammar() {
+    // ADR 0011: `Float Dot <not-IDENT>` is a *syntax* error, not a lexical one.
+    // §5.2 defines `field = "." IDENT`, so §5.2 cannot derive `1.2.3`; the
+    // parser rejects it with `E0102`. The lexer must keep producing this
+    // sequence, so the decision is not "fixed" in the wrong layer.
+    let kinds = lex_kinds("1.2.3");
+    assert_eq!(
+        kinds,
+        vec![TokenKind::Float(1.2), TokenKind::Dot, TokenKind::Int(3)]
+    );
+    assert!(
+        matches!(kinds.get(2), Some(TokenKind::Int(_))),
+        "the token after `.` is not an IDENT, which is what the parser rejects"
+    );
+
+    // The neighbouring forms *are* derivable and must not be caught by mistake:
+    // `1.foo` is Int `Dot` Ident (a `field`), and `1..5` is Int `DotDot` Int.
+    assert_eq!(
+        lex_kinds("1.foo"),
+        vec![TokenKind::Int(1), TokenKind::Dot, ident("foo")]
+    );
+    assert_eq!(
+        lex_kinds("1..5"),
+        vec![TokenKind::Int(1), TokenKind::DotDot, TokenKind::Int(5)]
+    );
+}

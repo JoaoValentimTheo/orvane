@@ -106,4 +106,5 @@ diagnóstico aponta o erro real.
 - O parser (M2) pode assumir: `Eof` sempre presente; spans disjuntos, ordenados
   e em fronteira de char; `Newline` significativo apenas onde §5.1 manda.
 - `1.2.3` ser válido léxico empurra a decisão para o parser, que é onde ela
-  pertence (não existe sintaxe léxica de "número com dois pontos").
+  pertence (não existe sintaxe léxica de "número com dois pontos"). Decidido no
+  **ADR 0011**: é erro sintático (`E0102`), porque §5.2 exige `IDENT` depois do `.`.

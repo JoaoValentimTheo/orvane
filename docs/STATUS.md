@@ -56,6 +56,7 @@ pipeline (ADR 0008, emenda).
 | `Span::intersects` para supressão de diagnóstico do parser | `intersects_detects_overlap`, `intersects_treats_a_point_span_as_inside`, `intersects_requires_the_same_file`, `intersects_two_point_spans` |
 | Contrato do pipeline com erro léxico (léxico primeiro; suprimir parser por interseção; sem sub-parse de `Expr.src`; nunca sema/run) | **contrato** (ADR 0008, emenda) — a implementação é do M2. Material bruto coberto por `lexical_diagnostics_cover_their_best_effort_token`, `a_newline_after_an_erroneous_token_does_not_overlap_it` |
 | `i64::MIN` sem literal: `(-9223372036854775807) - 1` (ADR 0007 §6.2) | `i64_min_cannot_be_written_as_a_literal`, `the_overflowing_magnitude_is_not_recoverable_from_tokens` |
+| `Float Dot Int` (`1.2.3`) é erro **sintático** `E0102`, não léxico (ADR 0011) | **decisão** — o parser é do M2. Intenção pinada por `float_dot_int_is_a_syntax_error_by_grammar` |
 
 ## Features do M1 (lexer)
 
