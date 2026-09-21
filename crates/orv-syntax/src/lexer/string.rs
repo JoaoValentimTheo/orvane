@@ -245,6 +245,8 @@ fn scan_interpolation(
     let content_start = cursor.pos();
 
     let mut depth = 1usize;
+    // One `E0006` per interpolation, however many backslashes it contains.
+    let mut backslash_reported = false;
     loop {
         match cursor.peek() {
             None | Some(b'\n' | b'\r') => {
@@ -267,14 +269,17 @@ fn scan_interpolation(
                 // consume the following character so a quote cannot open a
                 // nested string and swallow the closing `}`.
                 let start = cursor.pos();
-                diagnostics.push(
-                    Diagnostic::error(
-                        "E0006",
-                        "invalid interpolation: `\\` is not an escape",
-                        span(file, start, start + 1),
-                    )
-                    .with_help(r#"write nested strings without escaping: {f("a")}"#),
-                );
+                if !backslash_reported {
+                    backslash_reported = true;
+                    diagnostics.push(
+                        Diagnostic::error(
+                            "E0006",
+                            "invalid interpolation: `\\` is not an escape",
+                            span(file, start, start + 1),
+                        )
+                        .with_help(r#"write nested strings without escaping: {f("a")}"#),
+                    );
+                }
                 cursor.advance(1);
                 // A line break after `\` is left unconsumed: it still ends the
                 // line, exactly like a `\` in a plain string (ADR 0007/0009).

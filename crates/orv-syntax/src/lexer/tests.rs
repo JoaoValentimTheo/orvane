@@ -312,9 +312,11 @@ fn backslash_inside_interpolation_is_e0006() {
     // `}` so the expression part is produced.
     let (tokens, diagnostics) = lex_src(r#""{f(\"a\")}""#);
     let e0006: Vec<_> = diagnostics.iter().filter(|d| d.code == "E0006").collect();
-    // One per backslash for now; the next commit collapses this to one per
-    // interpolation.
-    assert_eq!(e0006.len(), 2, "got: {diagnostics:?}");
+    assert_eq!(
+        e0006.len(),
+        1,
+        "one diagnostic per interpolation: {diagnostics:?}"
+    );
     assert_eq!(
         (e0006[0].primary.start, e0006[0].primary.end),
         (4, 5),
