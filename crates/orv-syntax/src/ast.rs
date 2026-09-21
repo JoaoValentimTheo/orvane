@@ -36,6 +36,37 @@ pub enum ExprKind {
     Paren(Box<Expr>),
     /// `{ ... }` — a block *skeleton*.
     Block(Block),
+    /// `expr.IDENT` — field access.
+    Field { receiver: Box<Expr>, name: String },
+    /// `expr?.IDENT` — optional field access.
+    OptionalField { receiver: Box<Expr>, name: String },
+    /// `expr(arg, ...)` — a call.
+    ///
+    /// Arguments are parsed as expressions, which in this step means primaries
+    /// (and their postfix chains); operators arrive with the Pratt step.
+    Call { callee: Box<Expr>, args: Vec<Expr> },
+    /// `expr[index]` — indexing.
+    Index {
+        receiver: Box<Expr>,
+        index: Box<Expr>,
+    },
+}
+
+impl ExprKind {
+    /// The receiver of a postfix form, if this kind is one.
+    ///
+    /// Handy for tests and for later passes that walk the left spine.
+    pub fn receiver(&self) -> Option<&Expr> {
+        match self {
+            ExprKind::Field { receiver, .. }
+            | ExprKind::OptionalField { receiver, .. }
+            | ExprKind::Call {
+                callee: receiver, ..
+            }
+            | ExprKind::Index { receiver, .. } => Some(receiver),
+            _ => None,
+        }
+    }
 }
 
 /// A literal value.

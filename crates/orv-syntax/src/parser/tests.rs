@@ -354,3 +354,220 @@ fn without_suppression_that_parser_error_would_exist() {
     // shape produces `E0102` and it survives.
     assert_eq!(codes("(42"), vec!["E0102"]);
 }
+
+// --- Postfix: field, optional field, call, index ----------------------------
+
+#[test]
+fn parses_field_access() {
+    let e = expr("1.foo");
+    let ExprKind::Field { receiver, name } = e.kind else {
+        panic!("expected a field access, got {e:?}");
+    };
+    assert_eq!(name, "foo");
+    assert_eq!(receiver.kind, ExprKind::Literal(Literal::Int(1)));
+    // The span runs from the receiver to the end of the field name.
+    assert_eq!((e.span.start, e.span.end), (0, 5));
+}
+
+#[test]
+fn parses_optional_field_access() {
+    let e = expr("a?.b");
+    let ExprKind::OptionalField { receiver, name } = e.kind else {
+        panic!("expected an optional field access, got {e:?}");
+    };
+    assert_eq!(name, "b");
+    assert_eq!(receiver.kind, ExprKind::Ident("a".to_owned()));
+    assert_eq!((e.span.start, e.span.end), (0, 4));
+}
+
+#[test]
+fn parses_empty_call() {
+    let e = expr("f()");
+    let ExprKind::Call { callee, args } = e.kind else {
+        panic!("expected a call, got {e:?}");
+    };
+    assert_eq!(callee.kind, ExprKind::Ident("f".to_owned()));
+    assert!(args.is_empty());
+    assert_eq!((e.span.start, e.span.end), (0, 3));
+}
+
+#[test]
+fn parses_call_with_arguments() {
+    let e = expr("f(1, 2)");
+    let ExprKind::Call { callee, args } = e.kind else {
+        panic!("expected a call, got {e:?}");
+    };
+    assert_eq!(callee.kind, ExprKind::Ident("f".to_owned()));
+    assert_eq!(
+        args.iter().map(|a| a.kind.clone()).collect::<Vec<_>>(),
+        vec![
+            ExprKind::Literal(Literal::Int(1)),
+            ExprKind::Literal(Literal::Int(2))
+        ]
+    );
+}
+
+#[test]
+fn parses_call_with_trailing_comma() {
+    // §5.2 allows a trailing comma in arguments.
+    let e = expr("f(1,)");
+    let ExprKind::Call { args, .. } = e.kind else {
+        panic!("expected a call, got {e:?}");
+    };
+    assert_eq!(args.len(), 1);
+}
+
+#[test]
+fn parses_index() {
+    let e = expr("xs[0]");
+    let ExprKind::Index { receiver, index } = e.kind else {
+        panic!("expected an index, got {e:?}");
+    };
+    assert_eq!(receiver.kind, ExprKind::Ident("xs".to_owned()));
+    assert_eq!(index.kind, ExprKind::Literal(Literal::Int(0)));
+    assert_eq!((e.span.start, e.span.end), (0, 5));
+}
+
+#[test]
+fn parses_a_chained_postfix_expression() {
+    // `a.b(c)[d]?.e`: field, call, index, optional field, left to right.
+    let e = expr("a.b(c)[d]?.e");
+    let ExprKind::OptionalField { receiver, name } = e.kind else {
+        panic!("expected the outermost to be an optional field, got {e:?}");
+    };
+    assert_eq!(name, "e");
+
+    let ExprKind::Index { receiver, index } = receiver.kind else {
+        panic!("expected an index under the optional field, got {receiver:?}");
+    };
+    assert_eq!(index.kind, ExprKind::Ident("d".to_owned()));
+
+    let ExprKind::Call { callee, args } = receiver.kind else {
+        panic!("expected a call under the index, got {receiver:?}");
+    };
+    assert_eq!(args.len(), 1);
+    assert_eq!(args[0].kind, ExprKind::Ident("c".to_owned()));
+
+    let ExprKind::Field { receiver, name } = callee.kind else {
+        panic!("expected a field under the call, got {callee:?}");
+    };
+    assert_eq!(name, "b");
+    assert_eq!(receiver.kind, ExprKind::Ident("a".to_owned()));
+
+    // The span covers the whole chain.
+    assert_eq!((e.span.start, e.span.end), (0, 12));
+}
+
+#[test]
+fn a_literal_starting_the_chain_keeps_its_own_span_as_the_base() {
+    // `1.2.3` is rejected (ADR 0011), but `1.foo.bar` is a valid chain.
+    let e = expr("1.foo.bar");
+    let ExprKind::Field { receiver, name } = e.kind else {
+        panic!("expected a field, got {e:?}");
+    };
+    assert_eq!(name, "bar");
+    let ExprKind::Field { receiver, name } = receiver.kind else {
+        panic!("expected an inner field, got {receiver:?}");
+    };
+    assert_eq!(name, "foo");
+    assert_eq!(receiver.kind, ExprKind::Literal(Literal::Int(1)));
+}
+
+// --- Postfix errors ---------------------------------------------------------
+
+#[test]
+fn float_dot_int_is_rejected_with_e0102() {
+    // The ADR 0011 case, now enforced by the parser: after `.` the grammar
+    // requires an `IDENT`, and `3` is an `Int`.
+    let (result, _file) = parse("1.2.3");
+    let codes: Vec<&str> = result
+        .diagnostics
+        .as_slice()
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, vec!["E0102"], "only the parser error: {codes:?}");
+    assert!(
+        result.diagnostics.as_slice()[0]
+            .message
+            .contains("after `.`"),
+        "got: {:?}",
+        result.diagnostics.as_slice()[0].message
+    );
+    assert!(result.expr.is_none());
+}
+
+#[test]
+fn optional_field_without_identifier_reports_e0102() {
+    let (result, _file) = parse("a?.3");
+    let diagnostic = match result.diagnostics.as_slice().first() {
+        Some(diagnostic) => diagnostic,
+        None => panic!("expected a diagnostic"),
+    };
+    assert_eq!(diagnostic.code, "E0102");
+    assert!(
+        diagnostic.message.contains("after `?.`"),
+        "got: {:?}",
+        diagnostic.message
+    );
+}
+
+#[test]
+fn missing_closing_paren_in_call_reports_e0102() {
+    assert_eq!(codes("f(1"), vec!["E0102"]);
+    assert_eq!(codes("f("), vec!["E0102"]);
+}
+
+#[test]
+fn missing_closing_bracket_in_index_reports_e0102() {
+    assert_eq!(codes("xs[0"), vec!["E0102"]);
+}
+
+#[test]
+fn missing_comma_between_arguments_reports_e0102() {
+    assert_eq!(codes("f(1 2)"), vec!["E0102"]);
+}
+
+#[test]
+fn a_leading_comma_in_arguments_reports_e0102() {
+    assert_eq!(codes("f(,1)"), vec!["E0102"]);
+}
+
+#[test]
+fn postfix_errors_are_suppressed_under_a_lexical_error() {
+    // `(0x.foo`: the broken literal yields `E0005`, and the parser's complaint
+    // about the chain is suppressed because it intersects the lexical span.
+    let (result, _file) = parse("0x.foo");
+    let codes: Vec<&str> = result
+        .diagnostics
+        .as_slice()
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, vec!["E0005"], "no parser cascade: {codes:?}");
+}
+
+// --- Strings keep respecting the sub-parse guard ----------------------------
+
+#[test]
+fn postfix_over_a_broken_string_keeps_respecting_the_guard() {
+    // The postfix chain must not change how a best-effort `Str` is handled: the
+    // guard still says "no sub-parse", and no extra diagnostic appears.
+    let (result, _file) = parse(r#""{f(\"a\")}".len"#);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .as_slice()
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, vec!["E0006"], "only the lexical error: {codes:?}");
+    let Some(expr) = result.expr else {
+        panic!("the best-effort string should still yield an expression");
+    };
+    // The outer node is the field access built on the string literal.
+    let ExprKind::Field { name, .. } = expr.kind else {
+        panic!("expected a field access, got {expr:?}");
+    };
+    assert_eq!(name, "len");
+    assert!(!result.diagnostics.should_subparse_expr(expr.span));
+}

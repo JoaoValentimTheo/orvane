@@ -65,11 +65,150 @@ impl<'a> Parser<'a> {
     /// Trailing tokens are **not** consumed: this step has no statement
     /// grammar, so the caller decides what to do with the remainder.
     pub fn parse_expr(&mut self) -> ParseResult {
-        let expr = self.parse_primary();
+        let expr = self.parse_postfix();
         ParseResult {
             expr,
             diagnostics: std::mem::take(&mut self.diagnostics),
         }
+    }
+
+    /// Parses a primary followed by any number of postfix forms (SPEC §5.2):
+    ///
+    /// ```ebnf
+    /// postfix = primary { call | index | field | "?." IDENT } ;
+    /// ```
+    ///
+    /// The result's span runs from the start of the primary to the end of the
+    /// last postfix.
+    pub fn parse_postfix(&mut self) -> Option<Expr> {
+        let mut expr = self.parse_primary()?;
+        loop {
+            let token = self.current().clone();
+            match token.kind {
+                TokenKind::Dot | TokenKind::QuestionDot => {
+                    let optional = token.kind == TokenKind::QuestionDot;
+                    expr = self.parse_field_access(expr, optional)?;
+                }
+                TokenKind::LParen => expr = self.parse_call(expr)?,
+                TokenKind::LBracket => expr = self.parse_index(expr)?,
+                // Something that cannot extend a postfix ends the chain; the
+                // caller decides whether what follows is valid in context.
+                _ => return Some(expr),
+            }
+        }
+    }
+
+    /// Parses `"." IDENT` or `"?." IDENT`, with `receiver` already parsed.
+    ///
+    /// A missing identifier is `E0102`; this is what rejects `1.2.3`, decided in
+    /// ADR 0011 (`field = "." IDENT` cannot derive a numeric literal after `.`).
+    fn parse_field_access(&mut self, receiver: Expr, optional: bool) -> Option<Expr> {
+        self.advance(); // the `.` or `?.`
+
+        let token = self.current().clone();
+        let TokenKind::Ident(name) = token.kind.clone() else {
+            let expected = if optional {
+                "identifier after `?.`"
+            } else {
+                "identifier after `.`"
+            };
+            self.report_expected(expected, &token);
+            return None;
+        };
+        self.advance();
+
+        let span = receiver.span.to(token.span);
+        let kind = if optional {
+            ExprKind::OptionalField {
+                receiver: Box::new(receiver),
+                name,
+            }
+        } else {
+            ExprKind::Field {
+                receiver: Box::new(receiver),
+                name,
+            }
+        };
+        Some(Expr::new(kind, span))
+    }
+
+    /// Parses `( [arg { "," arg } [","]] )`, with `callee` already parsed.
+    ///
+    /// Arguments are parsed with [`Self::parse_postfix`], so they may be
+    /// primaries with their own postfix chains; operators arrive with Pratt.
+    fn parse_call(&mut self, callee: Expr) -> Option<Expr> {
+        self.advance(); // the `(`
+
+        let mut args: Vec<Expr> = Vec::new();
+        loop {
+            let token = self.current().clone();
+            match token.kind {
+                TokenKind::RParen => {
+                    self.advance();
+                    let span = callee.span.to(token.span);
+                    return Some(Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(callee),
+                            args,
+                        },
+                        span,
+                    ));
+                }
+                TokenKind::Eof | TokenKind::Newline => {
+                    self.report_expected("`)`", &token);
+                    return None;
+                }
+                TokenKind::Comma if args.is_empty() => {
+                    let token = self.current().clone();
+                    self.report_expected("expression", &token);
+                    return None;
+                }
+                _ => {
+                    let arg = self.parse_postfix()?;
+                    args.push(arg);
+                    let token = self.current().clone();
+                    match token.kind {
+                        TokenKind::Comma => self.advance(),
+                        TokenKind::RParen => {
+                            self.advance();
+                            let span = callee.span.to(token.span);
+                            return Some(Expr::new(
+                                ExprKind::Call {
+                                    callee: Box::new(callee),
+                                    args,
+                                },
+                                span,
+                            ));
+                        }
+                        _ => {
+                            self.report_expected("`,` or `)`", &token);
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parses `[ expr ]`, with `receiver` already parsed.
+    fn parse_index(&mut self, receiver: Expr) -> Option<Expr> {
+        self.advance(); // the `[`
+
+        let index = self.parse_postfix()?;
+        let token = self.current().clone();
+        if token.kind == TokenKind::RBracket {
+            self.advance();
+            let span = receiver.span.to(token.span);
+            return Some(Expr::new(
+                ExprKind::Index {
+                    receiver: Box::new(receiver),
+                    index: Box::new(index),
+                },
+                span,
+            ));
+        }
+        self.report_expected("`]`", &token);
+        None
     }
 
     /// Parses a primary expression.
