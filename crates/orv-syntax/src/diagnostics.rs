@@ -67,19 +67,22 @@ impl Diagnostics {
 
     /// Whether the expression inside a string interpolation may be sub-parsed.
     ///
+    /// Returns `true` when the sub-parse is allowed (no lexical error intersects
+    /// the string token). Returns `false` when the token is best-effort and the
+    /// parser must skip `Expr.src` entirely (ADR 0008 amend, rule 4).
+    ///
     /// A `Str` token is *best effort* when the lexer already failed on it
     /// (ADR 0008 A): its [`StrPart::Expr`] may be truncated, or may still carry
     /// the backslash that raised `E0006`. Re-lexing that text would invent
     /// source the author never wrote and report parser errors about it, so the
     /// sub-parse is skipped entirely — no sub-parse, and therefore no parser
-    /// diagnostic from that `Expr.src` (ADR 0008 amend, rule 4).
+    /// diagnostic from that `Expr.src`.
     ///
-    /// The guard is the span of the whole `Str` token, not of the individual
+    /// The guard uses the span of the whole `Str` token, not of the individual
     /// part: the lexical diagnostic may point at any byte of the literal.
     ///
-    /// The parser should call this before touching `Expr.src`; when it returns
-    /// `false` the sub-parse is allowed (the text is intact), but nothing in M2's
-    /// foundation step performs it yet.
+    /// The parser should call this before touching `Expr.src`. Nothing in the
+    /// current M2 foundation step performs the sub-parse yet.
     ///
     /// [`StrPart::Expr`]: crate::lexer::StrPart::Expr
     pub fn should_subparse_expr(&self, string_token_span: Span) -> bool {
