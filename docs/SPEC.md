@@ -232,7 +232,7 @@ print(m.shipping_cost({"id": 1, "total": 250.0, "country": "BR"}))  # 0.0
 - **Operadores/pontuação:**
   `+ - * / % == != < <= > >= = += -= *= /= => -> . , : ; ( ) [ ] { } #{ .. ..= ? ?. ??`
 - **Newline:** o lexer emite `Newline` (múltiplos colapsados). Regras:
-  1. Dentro de `(` `)` e `[` `]` (profundidade > 0) o lexer **suprime** `Newline`.
+  1. O lexer mantém uma **pilha de delimitadores**. `Newline` é suprimido se e somente se o delimitador aberto mais interno for `(`, `[` ou `#{`. Um `{` de bloco empilha um contexto em que `Newline` é significativo, mesmo dentro de `(`.
   2. O parser ignora `Newline` após: operador binário, `,`, `(`, `[`, `{`, `=>`, `->`, `=`.
   3. Em nível de statement, `Newline` (ou `;`) termina o statement.
 - **Interpolação de string:** o lexer emite **um único token** `Str(parts)` onde `parts: Vec<StrPart>` e `StrPart = Lit(String) | Expr { src: String, span: Span }`. O parser faz sub-parse de cada `Expr.src` com `span` deslocado para diagnósticos corretos.
@@ -632,6 +632,23 @@ Exit codes: `0` ok · `1` erro de programa/diagnóstico · `2` erro de ambiente/
 ### M1 — Lexer (~600 LOC)
 **Entregar:** tokens de §5.1 incluindo `Newline`, strings com interpolação (`Str(parts)`), números com `_`/hex/bin, comentários aninhados, erros `E0001–E0004`.
 **Testes:** ≥ 40 casos de unidade; proptest "nunca panic"; golden `tokens_*.orv`.
+**Testes obrigatórios (supressão de `Newline`, §5.1 regra 1):**
+1. lambda com bloco dentro de chamada — o `{` de bloco torna `Newline` significativo mesmo dentro de `(`:
+   ```orv
+   xs.map(x => {
+       let y = 1
+       y
+   })
+   ```
+   `Newline` deve ser emitido após `let y = 1` e após `y`.
+2. literal `#{ }` multilinha — chaves de mapa **suprimem** `Newline`:
+   ```orv
+   let m = #{
+       "a": 1,
+       "b": 2,
+   }
+   ```
+   Nenhum `Newline` deve ser emitido dentro do `#{ }`, e o `Newline` após o `}` de fechamento deve ser emitido.
 **Gate:** `orv tokens x.orv` (subcomando de debug, não conta no orçamento — remover no M12) dumpa tokens estáveis.
 
 ### M2 — Parser (~1.500 LOC)
