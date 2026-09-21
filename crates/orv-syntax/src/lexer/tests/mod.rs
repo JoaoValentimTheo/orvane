@@ -45,12 +45,7 @@ fn lex_with_sources(text: &str) -> (SourceMap, SourceFile, Vec<Token>, Vec<Diagn
     let id = sources.add("test.orv", text);
     let file = match sources.file(id).cloned() {
         Some(file) => file,
-        None => SourceFile {
-            id: FileId(0),
-            name: "test.orv".to_owned(),
-            path: None,
-            text: std::rc::Rc::from(text),
-        },
+        None => SourceFile::new(FileId(0), "test.orv", text),
     };
     let (tokens, diagnostics) = lex(&file);
     (sources, file, tokens, diagnostics)
