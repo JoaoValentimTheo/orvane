@@ -307,22 +307,24 @@ fn interpolation_allows_nested_strings_and_braces() {
 #[test]
 fn backslash_inside_interpolation_is_e0006() {
     // A `\` in an interpolation is not an escape: nested strings are written
-    // raw (ADR 0008). `\"a\"` has two backslashes, so two errors, but the
-    // scanner still runs to the closing `}` and yields the expression part.
+    // raw (ADR 0008). `\"a\"` has two backslashes but reports **one** `E0006`
+    // per interpolation (ADR 0009), and the scanner still runs to the closing
+    // `}` so the expression part is produced.
     let (tokens, diagnostics) = lex_src(r#""{f(\"a\")}""#);
-    let spans: Vec<(u32, u32)> = diagnostics
-        .iter()
-        .filter(|d| d.code == "E0006")
-        .map(|d| (d.primary.start, d.primary.end))
-        .collect();
-    assert_eq!(spans, vec![(4, 5), (7, 8)], "got: {diagnostics:?}");
-    for diagnostic in diagnostics.iter().filter(|d| d.code == "E0006") {
-        let help = diagnostic.help.clone().unwrap_or_default();
-        assert!(
-            help.contains("without escaping"),
-            "help should show the raw form, got: {help:?}"
-        );
-    }
+    let e0006: Vec<_> = diagnostics.iter().filter(|d| d.code == "E0006").collect();
+    // One per backslash for now; the next commit collapses this to one per
+    // interpolation.
+    assert_eq!(e0006.len(), 2, "got: {diagnostics:?}");
+    assert_eq!(
+        (e0006[0].primary.start, e0006[0].primary.end),
+        (4, 5),
+        "E0006 covers the first backslash"
+    );
+    let help = e0006[0].help.clone().unwrap_or_default();
+    assert!(
+        help.contains("without escaping"),
+        "help should show the raw form, got: {help:?}"
+    );
     let kinds: Vec<TokenKind> = tokens
         .into_iter()
         .filter(|t| !t.is_eof())
@@ -335,6 +337,67 @@ fn backslash_inside_interpolation_is_e0006() {
             span: crate::Span::new(FileId(0), 2, 10),
         }])]
     );
+}
+
+#[test]
+fn backslash_before_a_line_break_inside_interpolation_is_reported() {
+    // A `\` followed by a line break must not swallow the break, whether the
+    // break is LF or CRLF: both report the same diagnostics (ADR 0009).
+    for source in ["\"{f(\"a\\\nb\")}\"", "\"{f(\"a\\\r\nb\")}\""] {
+        let (_, diagnostics) = lex_src(source);
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code).collect();
+        assert!(
+            codes.contains(&"E0002"),
+            "{source:?} should report E0002, got {codes:?}"
+        );
+        assert!(
+            codes.contains(&"E0006"),
+            "{source:?} should report E0006, got {codes:?}"
+        );
+    }
+}
+
+#[test]
+fn line_break_after_backslash_inside_interpolation_is_not_swallowed() {
+    // The break survives as trivia, so the next line is lexed normally instead
+    // of being folded into the expression source.
+    for source in ["\"{f(\"a\\\nb\")}\"", "\"{f(\"a\\\r\nb\")}\""] {
+        let (tokens, _) = lex_src(source);
+        let kinds: Vec<TokenKind> = tokens
+            .into_iter()
+            .filter(|t| !t.is_eof())
+            .map(|t| t.kind)
+            .collect();
+        assert!(
+            kinds.contains(&TokenKind::Newline),
+            "{source:?} must emit a Newline, got {kinds:?}"
+        );
+        // The raw break never ends up inside an interpolation's source.
+        for kind in &kinds {
+            if let TokenKind::Str(parts) = kind {
+                for part in parts {
+                    if let StrPart::Expr { src, .. } = part {
+                        assert!(
+                            !src.contains('\n') && !src.contains('\r'),
+                            "{source:?} leaked a line break into {src:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn lf_and_crlf_agree_inside_a_nested_string() {
+    // The nested-string path must treat the break the same way.
+    for source in ["\"{f(\"a\\\nb\")}\"", "\"{f(\"a\\\r\nb\")}\""] {
+        let (_, diagnostics) = lex_src(source);
+        assert!(
+            diagnostics.iter().any(|d| d.code == "E0002"),
+            "{source:?} should report E0002, got {diagnostics:?}"
+        );
+    }
 }
 
 #[test]
@@ -1073,5 +1136,35 @@ proptest! {
         for diagnostic in &diagnostics {
             compact.push_str(&diagnostic.render_compact(&sources));
         }
+
+        // Line-ending invariance: replacing every `\n` with `\r\n` must not
+        // change the sequence of token kinds nor the diagnostic codes. Spans
+        // are allowed to shift, so the comparison strips the `L:C` prefixes.
+        if !text.contains('\r') {
+            let crlf = text.replace('\n', "\r\n");
+            let (_sources2, file2, tokens2, diagnostics2) = lex_with_sources(&crlf);
+            prop_assert_eq!(
+                kind_sequence(&file, &tokens),
+                kind_sequence(&file2, &tokens2),
+                "LF and CRLF must lex to the same kinds"
+            );
+            let codes: Vec<&str> = diagnostics.iter().map(|d| d.code).collect();
+            let codes2: Vec<&str> = diagnostics2.iter().map(|d| d.code).collect();
+            prop_assert_eq!(codes, codes2, "LF and CRLF must report the same codes");
+        }
     }
+}
+
+/// The dump of `tokens`, with the `line:col` prefix removed from each line.
+///
+/// Comparing this ignores span positions while keeping the kind and payload, so
+/// it can assert that LF and CRLF yield the same token sequence (ADR 0009).
+fn kind_sequence(file: &SourceFile, tokens: &[Token]) -> Vec<String> {
+    crate::dump::dump_tokens(file, tokens)
+        .lines()
+        .map(|line| match line.split_once(' ') {
+            Some((_position, kind)) => kind.to_owned(),
+            None => line.to_owned(),
+        })
+        .collect()
 }

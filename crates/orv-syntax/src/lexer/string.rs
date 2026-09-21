@@ -71,6 +71,23 @@ pub(super) fn scan_string(
                 flush(&mut parts, &mut lit);
                 return StringOutcome::Invalid(parts);
             }
+            Some(b'\r') => {
+                // `\r\n` is one break, so treat the CR the same as a lone LF:
+                // it ends the string. Handling it here (instead of letting the
+                // CR fall through as content) is what makes LF and CRLF produce
+                // the same parts and diagnostics (ADR 0009).
+                diagnostics.push(
+                    Diagnostic::error(
+                        "E0002",
+                        "unterminated string literal (newline before closing quote)",
+                        span(file, open, start),
+                    )
+                    .with_label(span(file, start, start + 1), "line break here")
+                    .with_help("use `\\n` for a newline inside a string"),
+                );
+                flush(&mut parts, &mut lit);
+                return StringOutcome::Invalid(parts);
+            }
             Some(b'"') => {
                 cursor.advance(1);
                 break;
@@ -230,9 +247,10 @@ fn scan_interpolation(
     let mut depth = 1usize;
     loop {
         match cursor.peek() {
-            None | Some(b'\n') => {
+            None | Some(b'\n' | b'\r') => {
                 // Decision D: a single, outermost `E0002` for the unclosed
                 // interpolation, regardless of how many inner problems there were.
+                // A lone CR counts as a break here too, so LF and CRLF agree.
                 diagnostics.push(
                     Diagnostic::error(
                         "E0002",
@@ -245,13 +263,10 @@ fn scan_interpolation(
             }
             Some(b'\\') => {
                 // A backslash is not an escape here; nested strings are raw.
-                // Report `E0006` over the `\`, then consume the following
-                // character as well: it belongs to the expression text, and
-                // letting a quote open a nested string would swallow the
-                // interpolation's closing `}`.
+                // Report `E0006` **once per interpolation** (ADR 0009), then
+                // consume the following character so a quote cannot open a
+                // nested string and swallow the closing `}`.
                 let start = cursor.pos();
-                cursor.advance(1);
-                cursor.bump_char();
                 diagnostics.push(
                     Diagnostic::error(
                         "E0006",
@@ -260,6 +275,12 @@ fn scan_interpolation(
                     )
                     .with_help(r#"write nested strings without escaping: {f("a")}"#),
                 );
+                cursor.advance(1);
+                // A line break after `\` is left unconsumed: it still ends the
+                // line, exactly like a `\` in a plain string (ADR 0007/0009).
+                if !matches!(cursor.peek(), Some(b'\n' | b'\r')) {
+                    cursor.bump_char();
+                }
             }
             Some(b'"') => {
                 // Skip a nested string so its braces do not affect depth.
@@ -311,6 +332,11 @@ fn scan_interpolation(
 ///
 /// Only nesting matters here; the nested string is re-lexed later by the parser,
 /// so its escapes are consumed without validation beyond finding the end.
+///
+/// A `\` immediately before a line break does **not** consume the break (same
+/// rule as plain strings and as [`scan_interpolation`]): the break ends the
+/// nested string as unterminated, so `"{f("a\<LF>b")}"` reports the same
+/// diagnostics whether the break is `\n`, `\r\n` or `\r` (ADR 0009).
 fn skip_nested_string(
     cursor: &mut Cursor<'_>,
     file: FileId,
@@ -342,9 +368,24 @@ fn skip_nested_string(
                 );
                 return false;
             }
+            Some(b'\r') => {
+                // `\r\n` is one break; either way the nested string ends here.
+                diagnostics.push(
+                    Diagnostic::error(
+                        "E0002",
+                        "unterminated string literal (newline before closing quote)",
+                        span(file, open, cursor.pos()),
+                    )
+                    .with_help("use `\\n` for a newline inside a string"),
+                );
+                return false;
+            }
             Some(b'\\') => {
                 cursor.advance(1);
-                cursor.bump_char();
+                // Leave a line break for the enclosing scanner to handle.
+                if !matches!(cursor.peek(), Some(b'\n' | b'\r')) {
+                    cursor.bump_char();
+                }
             }
             Some(b'"') => {
                 cursor.advance(1);
