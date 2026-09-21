@@ -212,6 +212,36 @@ fn invalid_numbers_report_e0005() {
 }
 
 #[test]
+fn float_out_of_range_reports_e0005_with_a_float_placeholder() {
+    // `1e999` is not representable as a finite `f64`; it must not become
+    // `Float(inf)` (ADR 0010).
+    for source in ["1e999", "1E999", "1.0e999", "1e309"] {
+        let (tokens, diagnostics) = lex_src(source);
+        assert_eq!(diagnostics.len(), 1, "for {source:?}");
+        assert_eq!(diagnostics[0].code, "E0005", "for {source:?}");
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some("float literal out of range"),
+            "for {source:?}"
+        );
+        let kinds: Vec<TokenKind> = tokens
+            .into_iter()
+            .filter(|t| !t.is_eof())
+            .map(|t| t.kind)
+            .collect();
+        assert_eq!(kinds, vec![TokenKind::Float(0.0)], "for {source:?}");
+    }
+}
+
+#[test]
+fn largest_finite_float_is_still_accepted() {
+    // `1e308` is finite, so it must not be rejected by the range check.
+    let (tokens, diagnostics) = lex_src("1e308");
+    assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    assert!(matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::Float(v)) if v.is_finite()));
+}
+
+#[test]
 fn chained_dots_are_not_a_number_error() {
     // `1.2.3` is `Float(1.2)` `.` `Int(3)`: the first `.` starts a fraction,
     // the second follows a value and is a field access.

@@ -51,6 +51,19 @@ pub fn kind_text(kind: &TokenKind) -> String {
 
 /// Renders a float so `1.0` stays `1.0` instead of `1`.
 fn float_text(value: f64) -> String {
+    // Non-finite values never reach a token (the lexer rejects them, ADR 0010),
+    // but a placeholder or a future caller could still pass one; render them
+    // explicitly instead of producing `inf.0`.
+    if value.is_nan() {
+        return "NaN".to_owned();
+    }
+    if value.is_infinite() {
+        return if value.is_sign_negative() {
+            "-inf".to_owned()
+        } else {
+            "inf".to_owned()
+        };
+    }
     let mut text = format!("{value}");
     if !text.contains(['.', 'e', 'E']) {
         text.push_str(".0");
@@ -154,6 +167,20 @@ mod tests {
     #[test]
     fn renders_integral_floats_with_a_decimal_point() {
         assert_eq!(dump("1.0"), "1:1 Float(1.0)\n1:4 Eof\n");
+    }
+
+    #[test]
+    fn renders_non_finite_floats_explicitly() {
+        // These never come from the lexer (ADR 0010), but the renderer must not
+        // produce `inf.0` if it ever sees one.
+        assert_eq!(float_text(f64::INFINITY), "inf");
+        assert_eq!(float_text(f64::NEG_INFINITY), "-inf");
+        assert_eq!(float_text(f64::NAN), "NaN");
+    }
+
+    #[test]
+    fn out_of_range_float_dumps_as_the_placeholder() {
+        assert_eq!(dump("1e999"), "1:1 Float(0.0)\n1:6 Eof\n");
     }
 
     #[test]

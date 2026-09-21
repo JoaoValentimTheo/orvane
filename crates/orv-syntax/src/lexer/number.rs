@@ -124,7 +124,17 @@ fn scan_decimal(
 
     if is_float {
         match cleaned.parse::<f64>() {
-            Ok(value) => NumberOutcome::Float(value),
+            // `1e999` parses to infinity: the literal is out of range, not a
+            // valid float, so it is `E0005` with a float placeholder (ADR 0010).
+            Ok(value) if value.is_finite() => NumberOutcome::Float(value),
+            Ok(_) => invalid_float(
+                cursor,
+                file,
+                diagnostics,
+                start,
+                end,
+                Some("float literal out of range"),
+            ),
             Err(_) => invalid_float(cursor, file, diagnostics, start, end, None),
         }
     } else {
