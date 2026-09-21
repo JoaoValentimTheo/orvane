@@ -1,4 +1,5 @@
 use super::*;
+use crate::diagnostics::Diagnostics;
 // --- Token stream invariants -----------------------------------------------
 
 #[test]
@@ -106,5 +107,49 @@ fn a_newline_after_an_erroneous_token_does_not_overlap_it() {
     assert!(
         newline_after_error,
         "the statement terminator must survive so the parser can resync: {tokens:?}"
+    );
+}
+
+#[test]
+fn the_aggregator_suppresses_parser_noise_but_keeps_the_terminator() {
+    // (b) with real lexer output: a parser diagnostic anchored on a best-effort
+    // token disappears, and the `Newline` that ends the broken statement stays
+    // in the stream so the parser can still resynchronise (ADR 0008 amend).
+    let (tokens, lexical) = lex_src("let x = 0x\nlet y = 1\n");
+    let e0005 = match lexical.iter().find(|d| d.code == "E0005") {
+        Some(diagnostic) => diagnostic.primary,
+        None => panic!("expected E0005, got {lexical:?}"),
+    };
+    let terminator = match tokens
+        .iter()
+        .find(|t| t.is_newline() && t.span.start > e0005.end)
+    {
+        Some(token) => token,
+        None => panic!("expected a Newline after the broken statement: {tokens:?}"),
+    };
+
+    // A parser diagnostic about the placeholder token is noise and must go.
+    let on_placeholder = Diagnostic::error("E0101", "unexpected token", e0005);
+    // The terminator sits *after* the error, so it does not intersect it: a
+    // parser diagnostic about the newline is about a token the author really
+    // wrote, and it survives. Suppression is not allowed to cascade.
+    let on_terminator = Diagnostic::error("E0101", "unexpected newline", terminator.span);
+
+    let mut all = Diagnostics::new(lexical);
+    all.extend_suppressed([on_placeholder, on_terminator.clone()]);
+
+    assert_eq!(
+        all.as_slice().iter().map(|d| d.code).collect::<Vec<_>>(),
+        vec!["E0005", "E0101"],
+        "the lexical error and the terminator diagnostic survive: {all:?}"
+    );
+    assert_eq!(
+        all.as_slice().last(),
+        Some(&on_terminator),
+        "the surviving parser diagnostic is the one about the terminator"
+    );
+    assert!(
+        all.has_errors(),
+        "a lexical error must block sema/run (ADR 0008 amend, rule 5)"
     );
 }
