@@ -35,3 +35,26 @@ automática de snapshots e no M0 ainda não existe lexer/parser/interpretador.
   cobrir arquivos de verdade sem mudança de formato.
 - O cabeçalho `// orv: <subcomando>` é uma convenção do harness; comentários
   `//` já são léxico válido (§5.1), então os arquivos não contêm sintaxe nova.
+
+## Emenda: fim de linha (correção do CI no M0)
+
+O primeiro job de Windows falhou com
+
+```text
+--- stdout mismatch ---
+expected:
+    orv 0.1.0 (orvane 0.1.0)
+actual:
+    orv 0.1.0 (orvane 0.1.0)
+```
+
+As duas linhas eram idênticas ao olho: os `\r\n` do pipe do Windows apareciam na
+saída capturada, enquanto o `.out` versionado tem `\n`. Duas correções
+complementares:
+
+1. `.gitattributes` marca `tests/golden/**` como `-text`, impedindo que um
+   checkout com `core.autocrlf=true` reescreva as expectativas para CRLF.
+2. O harness normaliza a saída capturada (`decode_output`) trocando `CRLF` por
+   `LF`, de modo que `\r` isolado continua significativo e o ruído do pipe não
+   derruba o teste. Coberto por `decode_output_normalizes_crlf` e
+   `decode_output_keeps_lf_and_lone_cr`.

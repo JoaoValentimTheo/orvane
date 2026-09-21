@@ -31,6 +31,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | `Diagnostic` + formato `.err` estável `CODE:linha:coluna: mensagem` | unidade em `crates/orv-syntax/src/diagnostic.rs` |
 | Renderização `ariadne` (ASCII, sem cor, determinística) | unidade em `crates/orv-syntax/src/render.rs` |
 | CLI `orv version` | unidade em `crates/orv-cli/src/cli.rs` + golden `tests/golden/version` |
-| Harness golden (`.orv` + `.out` + `.err`) | `tests/golden_runner.rs` |
+| Harness golden (`.orv` + `.out` + `.err`) | `tests/golden_runner.rs` (`crates/orv-cli/tests/`) |
+| Fim de linha estável no golden (Linux + Windows) | `decode_output_normalizes_crlf`, `decode_output_keeps_lf_and_lone_cr`; `.gitattributes` |
 | CI Linux + Windows (fmt/clippy/test) | `.github/workflows/ci.yml` |
 | `AGENTS.md`, `docs/errors.md`, `docs/adr/` | revisão; ADRs 0001–0003 |

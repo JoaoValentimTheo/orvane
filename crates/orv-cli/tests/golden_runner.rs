@@ -79,7 +79,7 @@ fn run_case(orv_file: &Path, orv_bin: &Path) -> Result<(), String> {
     let out_path = stem.with_extension("out");
     if out_path.exists() {
         let expected = read_expectation(&out_path)?;
-        let actual = String::from_utf8_lossy(&output.stdout).into_owned();
+        let actual = decode_output(&output.stdout);
         if actual != expected {
             problems.push(diff_report("stdout", &expected, &actual));
         }
@@ -93,7 +93,7 @@ fn run_case(orv_file: &Path, orv_bin: &Path) -> Result<(), String> {
     let err_path = stem.with_extension("err");
     if err_path.exists() {
         let expected = read_expectation(&err_path)?;
-        let actual = normalize_diagnostics(&String::from_utf8_lossy(&output.stderr));
+        let actual = normalize_diagnostics(&decode_output(&output.stderr));
         if actual != expected {
             problems.push(diff_report("diagnostics", &expected, &actual));
         }
@@ -117,6 +117,23 @@ fn parse_header(source: &str) -> Option<Vec<String>> {
 
 fn read_expectation(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|err| format!("cannot read {}: {err}", path.display()))
+}
+
+/// Decodes captured stdout/stderr to text with `LF` line endings.
+///
+/// Windows pipes produce `CRLF`, while the expectation files are checked in
+/// with `LF`, so without this normalization the comparison would differ only by
+/// line endings (see ADR 0003).
+fn decode_output(bytes: &[u8]) -> String {
+    normalize_line_endings(&String::from_utf8_lossy(bytes)).into_owned()
+}
+
+/// Replaces `CRLF` with `LF`, leaving lone `CR` bytes untouched.
+fn normalize_line_endings(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.contains("\r\n") {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    std::borrow::Cow::Owned(text.replace("\r\n", "\n"))
 }
 
 fn file_label(path: &Path) -> String {
@@ -293,5 +310,19 @@ mod harness_unit_tests {
     fn empty_expectation_renders_placeholder() {
         assert_eq!(indent(""), "    <empty>");
         assert_eq!(indent("a\nb"), "    a\n    b");
+    }
+
+    #[test]
+    fn decode_output_normalizes_crlf() {
+        // Windows pipes deliver CRLF; expectation files are LF-only.
+        assert_eq!(decode_output(b"orv 0.1.0\r\n"), "orv 0.1.0\n");
+        assert_eq!(decode_output(b"a\r\nb\r\n"), "a\nb\n");
+    }
+
+    #[test]
+    fn decode_output_keeps_lf_and_lone_cr() {
+        assert_eq!(decode_output(b"a\nb\n"), "a\nb\n");
+        assert_eq!(normalize_line_endings("a\rb"), "a\rb");
+        assert_eq!(normalize_line_endings("plain"), "plain");
     }
 }

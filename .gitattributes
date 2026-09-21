@@ -1,0 +1,10 @@
+# Golden expectation files are compared byte for byte, so they must keep LF
+# line endings on every platform (ADR 0003). Without this, a Windows checkout
+# with `core.autocrlf=true` would rewrite `.out`/`.err` and break the harness.
+tests/golden/** -text
+
+# Rust sources and docs may use the platform's native endings.
+*.rs text
+*.toml text
+*.md text
+*.yml text
