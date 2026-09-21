@@ -19,7 +19,7 @@ Todo código novo **deve** ser adicionado aqui com exemplo mínimo (§8.2).
 | `E0002` | string não terminada | `"abc` · `"abc<newline>` · `"{a` | **M1** |
 | `E0003` | comentário não fechado | `/* abc` | **M1** |
 | `E0004` | escape inválido | `"a\q"` · `"a\<quebra de linha>` | **M1** |
-| `E0005` | literal numérico inválido | `0x` · `0b` · `1__0` · `1_` · `1e` · `9223372036854775808` | **M1** |
+| `E0005` | literal numérico inválido | `0x` · `0b` · `1__0` · `1_` · `1e` · `9223372036854775808` · `1e999` | **M1** |
 | `E0006` | interpolação inválida | `"a}b"` · `"{}"` · `"{f(\"a\")}"` | **M1** |
 
 Notas de comportamento (M1):
@@ -34,11 +34,15 @@ Notas de comportamento (M1):
   do arquivo e é reportado uma única vez.
 - `E0004`: a mensagem usa `escape_debug`, então nunca contém caractere de
   controle cru. `\` seguido de **quebra de linha** é `E0004` com span apenas
-  sobre a `\`, e a quebra **não** é consumida (segue valendo como fim de linha).
+  sobre a `\`, e a quebra **não** é consumida (segue valendo como fim de linha)
+  — o mesmo vale dentro de `{...}` e de string aninhada (ADR 0009), de modo que
+  LF, CRLF e CR produzem os mesmos diagnósticos.
 - `E0005`: a mensagem não distingue os casos; o `help` diz o motivo
-  (`_` fora de dígitos, prefixo sem dígitos, ou literal fora de `i64`).
+  (`_` fora de dígitos, prefixo sem dígitos, literal fora de `i64`, ou
+  `float literal out of range` para `1e309`/`1e999`).
 - `E0006`: `}` sem `{` (help "use }}"), interpolação vazia `{}`, e `\` dentro de
-  `{...}` (help: escreva `{f("a")}` sem escape).
+  `{...}` (help: escreva `{f("a")}` sem escape) — **um** diagnóstico por
+  interpolação, não um por barra.
 
 **Tokens de melhor esforço (ADR 0008).** Todo erro léxico emite, além do
 diagnóstico, um token que cobre o trecho lido: `Str(parts)` com as partes já

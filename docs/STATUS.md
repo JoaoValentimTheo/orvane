@@ -9,8 +9,9 @@ teste golden que a exercita. Sem teste → `Planned`.
 |---|---|---|---|
 | M0 | bootstrap do workspace, `Span`/`SourceMap`/`Diagnostic`, harness golden, CI | **Implemented** | `cargo test` roda o harness com 1 caso golden; `orv version` imprime a versão |
 | M0.1 | hardening: harness estrito, LF no `version`, licenças, README, CI `--locked` | **Implemented** | `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace` (sem features novas da linguagem) |
-| M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 118 testes de unidade + 2 proptests |
+| M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 128 testes de unidade + 2 proptests |
 | M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
+| M1.2 | últimos ajustes: teste de stdout determinístico, paridade LF/CRLF com `\`, `E0006` por interpolação, float fora de faixa, docs, testes divididos | **Implemented** | mesmo gate; 17 goldens `tokens_*` |
 | M2 | parser + `orv ast` | Planned | §4.1–§4.2 parseiam |
 | M3 | sema v1 (nomes e tipos) | Planned | `orv check` |
 | M4 | interpretador v1 | Planned | `orv run examples/fib.orv` |
@@ -74,3 +75,9 @@ teste golden que a exercita. Sem teste → `Planned`.
 | proptest: invariantes com alfabeto de fragmentos | `lex_invariants_hold` |
 | Formato de dump estável | `dump::tests::*`; goldens `tokens_*` |
 | `orv tokens` (stdout/`Eof`/exit 1 com diagnóstico) | goldens `tokens_*`, `tokens_err_*`; `tokens_subcommand_parses_with_a_file` |
+| Paridade LF/CRLF/CR com `\` (ADR 0009) | `backslash_before_a_line_break_inside_interpolation_is_reported`, `line_break_after_backslash_inside_interpolation_is_not_swallowed`, `lf_and_crlf_agree_inside_a_nested_string`; invariante `kind_sequence` em `lex_invariants_hold` |
+| Um `E0006` por interpolação | `backslash_inside_interpolation_is_e0006`; golden `tokens_err_interp_escape` |
+| Float fora da faixa é `E0005` (ADR 0010) | `float_out_of_range_reports_e0005_with_a_float_placeholder`, `largest_finite_float_is_still_accepted`, `renders_non_finite_floats_explicitly`, `out_of_range_float_dumps_as_the_placeholder`; golden `tokens_err_float_range` |
+| `0X`/`0B`/`E` maiúsculos; `i64::MIN` não escrevível (ADR 0007 §6.1/6.2) | `radix_prefixes_and_exponents_accept_uppercase`, `i64_min_cannot_be_written_as_a_literal`, `i64_max_magnitude_is_fine` |
+| stdout fechado/cheio não dá panic (determinístico no Linux) | `tokens_with_closed_stdout_does_not_panic`, `tokens_with_full_stdout_reports_usage_error` (Linux) |
+| Testes do lexer divididos por tema | `crates/orv-syntax/src/lexer/tests/{keywords,numbers,strings,operators,comments,newlines,invariants,properties}.rs` (81 testes, nomes e corpos inalterados) |
