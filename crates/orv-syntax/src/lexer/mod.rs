@@ -16,6 +16,7 @@ mod number;
 mod operators;
 mod string;
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
 mod token;
 mod trivia;
