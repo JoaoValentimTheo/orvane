@@ -143,6 +143,23 @@ fn scan_escape(
         return false;
     };
 
+    // A line break after `\` is not an escape. Report it over the `\` alone and
+    // leave the break unconsumed, so it still ends the line for the caller.
+    if ch == '\n' || ch == '\r' {
+        cursor.rewind_to(backslash + 1);
+        diagnostics.push(
+            Diagnostic::error(
+                "E0004",
+                "invalid escape sequence `\\`",
+                span(file, backslash, backslash + 1),
+            )
+            .with_help(
+                "valid escapes are \\n \\t \\r \\\\ \\\" \\{ \\}; `\\` cannot escape a line break",
+            ),
+        );
+        return false;
+    }
+
     match ch {
         'n' => lit.push('\n'),
         't' => lit.push('\t'),
@@ -152,10 +169,11 @@ fn scan_escape(
         '{' => lit.push('{'),
         '}' => lit.push('}'),
         _ => {
+            let rendered = ch.escape_debug().to_string();
             diagnostics.push(
                 Diagnostic::error(
                     "E0004",
-                    format!("invalid escape sequence `\\{ch}`"),
+                    format!("invalid escape sequence `\\{rendered}`"),
                     span(file, backslash, cursor.pos()),
                 )
                 .with_help("valid escapes are \\n \\t \\r \\\\ \\\" \\{ \\}"),

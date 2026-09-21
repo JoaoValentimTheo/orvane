@@ -83,6 +83,18 @@ impl<'a> Cursor<'a> {
         self.pos = self.pos.saturating_add(n).min(self.bytes.len());
     }
 
+    /// Moves back to an earlier offset, clamped to the current position.
+    ///
+    /// Only used to un-consume a character the scanner decided not to take
+    /// (e.g. a line break after a `\` that turned out not to be an escape).
+    /// `offset` must be on a `char` boundary; it is clamped so this never panics.
+    pub fn rewind_to(&mut self, offset: usize) {
+        let target = offset.min(self.pos);
+        if self.text.is_char_boundary(target) {
+            self.pos = target;
+        }
+    }
+
     /// Advances past the current `char` and returns it.
     pub fn bump_char(&mut self) -> Option<char> {
         let ch = self.peek_char()?;

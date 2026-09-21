@@ -371,6 +371,59 @@ fn unknown_escape_reports_e0004() {
 }
 
 #[test]
+fn unknown_escape_message_uses_escape_debug() {
+    // A bare control character inside a string is ordinary content, not an
+    // error; only the escape after `\` is unknown.
+    let (_, diagnostics) = lex_src("\"a\\\u{7}\"");
+    let message = diagnostics
+        .iter()
+        .find(|d| d.code == "E0004")
+        .map(|d| d.message.clone())
+        .unwrap_or_default();
+    assert!(
+        message.contains("\\u{7}"),
+        "the control char must be escaped in the message, got: {message:?}"
+    );
+    assert!(
+        !message.contains('\n') && !message.contains('\r'),
+        "message must be single-line: {message:?}"
+    );
+}
+
+#[test]
+fn backslash_before_a_line_break_reports_e0004_on_the_backslash_only() {
+    // The `\` is the error; the break is left for the caller, so the string is
+    // then reported as unterminated by the normal newline rule.
+    let (_, diagnostics) = lex_src("\"a\\\nb\"");
+    let e0004: Vec<_> = diagnostics.iter().filter(|d| d.code == "E0004").collect();
+    assert_eq!(e0004.len(), 1, "got: {diagnostics:?}");
+    let span = e0004[0].primary;
+    assert_eq!(
+        (span.start, span.end),
+        (2, 3),
+        "E0004 must cover only the backslash"
+    );
+    assert!(
+        diagnostics.iter().any(|d| d.code == "E0002"),
+        "the string is still unterminated: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn backslash_before_a_line_break_does_not_swallow_the_newline() {
+    // The `\n` survives as trivia; scanning resumes on the next line and `b`
+    // is lexed as an identifier, which would be impossible if the break had
+    // been consumed as part of an escape.
+    let (tokens, _) = lex_src("\"a\\\nb\"");
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![ident("b")], "the line break was consumed");
+}
+
+#[test]
 fn lone_closing_brace_reports_e0006() {
     assert_eq!(lex_errors(r#""a}b""#), vec!["E0006"]);
 }
@@ -830,6 +883,13 @@ proptest! {
             prop_assert!((end as usize) <= file_text.len(), "diagnostic span out of bounds");
             prop_assert!(file_text.is_char_boundary(start as usize));
             prop_assert!(file_text.is_char_boundary(end as usize));
+
+            // A message is one line by contract: no raw control characters.
+            prop_assert!(
+                !diagnostic.message.contains('\n') && !diagnostic.message.contains('\r'),
+                "diagnostic message must not contain a line break: {:?}",
+                diagnostic.message
+            );
         }
 
         // The renderers must not panic on any lexer output.
