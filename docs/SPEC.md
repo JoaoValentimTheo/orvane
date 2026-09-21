@@ -223,7 +223,8 @@ print(m.shipping_cost({"id": 1, "total": 250.0, "country": "BR"}))  # 0.0
 - **Comentários:** `// linha` e `/* bloco aninhável */`.
 - **Identificadores:** `[A-Za-z_][A-Za-z0-9_]*` (ASCII na v0.1; Unicode = ADR futura).
 - **Keywords (reservadas):**
-  `fn intent how given ensure when via priority data enum let mut if else match for in while return break continue use py as try fail true false none and or not pub test`
+  `fn intent how given ensure when via priority data enum let mut if else match for in while return break continue use as try fail true false none and or not pub test`
+- **`py` é contextual (NÃO reservada):** `py` é keyword **apenas logo após `use`** (`use py math as m`). Em qualquer outro lugar é um identificador comum, pois o módulo `py` está disponível sem `use` e expõe `py.eval` / `py.exec` (§6.2). Consequência para o lexer: `py` é emitido como `Ident("py")`; o parser decide se é o marcador de import Python pelo contexto. Um programa pode portanto declarar `let py = 1` ou `fn py() {}` sem erro léxico.
 - **Literais:**
   - Int: `123`, `1_000`, `0xFF`, `0b1010` (tipo `Int` = `i64`).
   - Float: `1.5`, `2e10`, `1_0.5`.
@@ -688,7 +689,7 @@ Exit codes: `0` ok · `1` erro de programa/diagnóstico · `2` erro de ambiente/
 **Gate:** os 12 casos passam. **Este é o milestone que decide se o projeto tem identidade — não apresse.**
 
 ### M7 — Python → uso (`use py`) (~1.400 LOC)
-**Entregar:** trait `Host`, `NoHost`, `MockHost`, `PyHost` (crate `orv-py`); `use py`, atributo/chamada/kwargs/índice/iteração/operadores sobre `Py`; `py.eval/exec`; `Py as T` (§6.3–6.4); exceções ⇒ `PyError`; `orv doctor`; descoberta de ambiente (§6.6).
+**Entregar:** trait `Host`, `NoHost`, `MockHost`, `PyHost` (crate `orv-py`); `use py`, atributo/chamada/kwargs/índice/iteração/operadores sobre `Py`; `py.eval/exec`; `Py as T` (§6.3–6.4); exceções ⇒ `PyError`; `orv doctor`; descoberta de ambiente (§6.6). Lembrar que `py` é **contextual** (§5.1): o lexer sempre emite `Ident("py")` e o parser só o trata como import Python imediatamente após `use`.
 **Testes:** com `MockHost` (sem Python) para a lógica; com Python real (feature `python-tests`) para `math`, `json`, `os.path`, e `numpy` **se instalado** (teste marcado opcional).
 **Gate:** exemplo §4.4 roda com `requests` **mockado via `py.exec`** (não dependa de rede nos testes): a 1ª strategy falha por exceção, a 2ª responde; `--explain` mostra as duas.
 
