@@ -153,3 +153,44 @@ fn the_aggregator_suppresses_parser_noise_but_keeps_the_terminator() {
         "a lexical error must block sema/run (ADR 0008 amend, rule 5)"
     );
 }
+
+#[test]
+fn a_string_with_a_lexical_error_blocks_its_interpolation_subparse() {
+    // ADR 0008 amend rule 4, with real lexer output. `"{f(\"a\")}"` reports
+    // `E0006` inside the string, so the token is best effort: its `Expr.src`
+    // must not be re-lexed, and no parser diagnostic may come from it.
+    let (tokens, lexical) = lex_src(r#""{f(\"a\")}""#);
+    let string_token = match tokens.iter().find(|t| matches!(t.kind, TokenKind::Str(_))) {
+        Some(token) => token,
+        None => panic!("expected a Str token, got {tokens:?}"),
+    };
+    assert!(
+        lexical.iter().any(|d| d.code == "E0006"),
+        "the literal should carry a lexical error: {lexical:?}"
+    );
+
+    let all = Diagnostics::new(lexical);
+    assert!(
+        all.is_suppressed(string_token.span),
+        "the Str span must intersect the lexical error"
+    );
+    assert!(
+        !all.should_subparse_expr(string_token.span),
+        "the Expr.src must not be sub-parsed under a lexical error"
+    );
+}
+
+#[test]
+fn a_clean_string_allows_its_interpolation_subparse() {
+    // The counterpart: `"{f("a")}"` is well formed, so the sub-parse path stays
+    // open for the parser (nothing in this step performs it).
+    let (tokens, lexical) = lex_src(r#""{f("a")}""#);
+    assert!(lexical.is_empty(), "expected a clean literal: {lexical:?}");
+    let string_token = match tokens.iter().find(|t| matches!(t.kind, TokenKind::Str(_))) {
+        Some(token) => token,
+        None => panic!("expected a Str token, got {tokens:?}"),
+    };
+    let all = Diagnostics::new(lexical);
+    assert!(!all.is_suppressed(string_token.span));
+    assert!(all.should_subparse_expr(string_token.span));
+}

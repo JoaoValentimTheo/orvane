@@ -65,6 +65,27 @@ impl Diagnostics {
             .any(|lexical| span.intersects(*lexical))
     }
 
+    /// Whether the expression inside a string interpolation may be sub-parsed.
+    ///
+    /// A `Str` token is *best effort* when the lexer already failed on it
+    /// (ADR 0008 A): its [`StrPart::Expr`] may be truncated, or may still carry
+    /// the backslash that raised `E0006`. Re-lexing that text would invent
+    /// source the author never wrote and report parser errors about it, so the
+    /// sub-parse is skipped entirely — no sub-parse, and therefore no parser
+    /// diagnostic from that `Expr.src` (ADR 0008 amend, rule 4).
+    ///
+    /// The guard is the span of the whole `Str` token, not of the individual
+    /// part: the lexical diagnostic may point at any byte of the literal.
+    ///
+    /// The parser should call this before touching `Expr.src`; when it returns
+    /// `false` the sub-parse is allowed (the text is intact), but nothing in M2's
+    /// foundation step performs it yet.
+    ///
+    /// [`StrPart::Expr`]: crate::lexer::StrPart::Expr
+    pub fn should_subparse_expr(&self, string_token_span: Span) -> bool {
+        !self.is_suppressed(string_token_span)
+    }
+
     /// Whether any diagnostic of severity [`Severity::Error`] is present.
     ///
     /// The gate for "never advance to sema/run" (ADR 0008 amend, rule 5); it
@@ -234,5 +255,51 @@ mod tests {
         let mut all = Diagnostics::new([lexical.clone()]);
         all.extend_suppressed([Diagnostic::error("E0101", "suppressed", span(9, 10))]);
         assert_eq!(all.into_vec(), vec![lexical]);
+    }
+
+    #[test]
+    fn subparse_is_blocked_when_the_string_intersects_a_lexical_error() {
+        // ADR 0008 amend rule 4: a `Str` with a lexical error is best effort, so
+        // its interpolation must not be re-lexed.
+        let string_token = span(4, 12);
+        let all = Diagnostics::new([Diagnostic::error(
+            "E0006",
+            "invalid interpolation: `\\` is not an escape",
+            span(7, 8),
+        )]);
+        assert!(all.is_suppressed(string_token));
+        assert!(
+            !all.should_subparse_expr(string_token),
+            "the Expr.src must not be sub-parsed"
+        );
+    }
+
+    #[test]
+    fn subparse_is_allowed_for_a_clean_string() {
+        // The counterpart: no lexical error touching the token, so the future
+        // parser may sub-parse normally.
+        let string_token = span(4, 12);
+        let all = Diagnostics::new([]);
+        assert!(!all.is_suppressed(string_token));
+        assert!(all.should_subparse_expr(string_token));
+    }
+
+    #[test]
+    fn subparse_is_allowed_when_the_lexical_error_is_elsewhere() {
+        // A `Str` far from the broken region is still intact.
+        let all = Diagnostics::new([Diagnostic::error(
+            "E0005",
+            "invalid numeric literal",
+            span(0, 2),
+        )]);
+        assert!(all.should_subparse_expr(span(10, 20)));
+    }
+
+    #[test]
+    fn subparse_guard_uses_the_whole_string_span() {
+        // The lexical error sits at the very end of the literal; the guard is
+        // the token's whole span, so the sub-parse is still skipped.
+        let all = Diagnostics::new([Diagnostic::error("E0002", "unterminated", span(19, 20))]);
+        assert!(!all.should_subparse_expr(span(10, 20)));
     }
 }
