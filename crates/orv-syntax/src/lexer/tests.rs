@@ -617,6 +617,37 @@ fn lone_carriage_return_is_whitespace() {
 }
 
 #[test]
+fn lone_carriage_return_does_not_end_a_line_comment() {
+    // `\r` is whitespace, so it stays inside the comment; only `\n` ends it.
+    assert_eq!(
+        lex_kinds("a // c\rd\nb"),
+        vec![ident("a"), TokenKind::Newline, ident("b")]
+    );
+}
+
+#[test]
+fn carriage_return_newline_does_end_a_line_comment() {
+    assert_eq!(
+        lex_kinds("a // c\r\nb"),
+        vec![ident("a"), TokenKind::Newline, ident("b")]
+    );
+}
+
+#[test]
+fn lone_carriage_return_inside_a_block_comment_is_not_a_newline() {
+    // Only `\n` and `\r\n` count as a line break inside `/* */`.
+    assert_eq!(lex_kinds("a /* x\ry */ b"), vec![ident("a"), ident("b")]);
+}
+
+#[test]
+fn crlf_inside_a_block_comment_is_one_newline() {
+    assert_eq!(
+        lex_kinds("a /* x\r\ny */ b"),
+        vec![ident("a"), TokenKind::Newline, ident("b")]
+    );
+}
+
+#[test]
 fn bom_is_ignored() {
     // `SourceMap::add` strips the leading BOM, so the lexer never sees it.
     assert_eq!(

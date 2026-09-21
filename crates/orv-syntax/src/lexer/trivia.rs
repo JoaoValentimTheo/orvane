@@ -10,9 +10,15 @@ use super::{Lexer, Token, TokenKind};
 
 impl Lexer<'_> {
     /// `// ...` up to, but not including, the line break.
+    ///
+    /// Only `\n` and `\r\n` end the comment; a lone `\r` is ordinary whitespace
+    /// (SPEC §5.1: "`\r` isolado é espaço"), so it stays inside the comment.
     pub(super) fn line_comment(&mut self) {
         while let Some(b) = self.cursor.peek() {
-            if b == b'\n' || b == b'\r' {
+            if b == b'\n' {
+                break;
+            }
+            if b == b'\r' && self.cursor.peek_byte(1) == Some(b'\n') {
                 break;
             }
             self.cursor.advance(1);
@@ -54,13 +60,12 @@ impl Lexer<'_> {
                     self.cursor.advance(1);
                     saw_newline = true;
                 }
-                Some(b'\r') => {
-                    if self.cursor.peek_byte(1) == Some(b'\n') {
-                        self.cursor.advance(1);
-                    }
-                    self.cursor.advance(1);
+                Some(b'\r') if self.cursor.peek_byte(1) == Some(b'\n') => {
+                    // `\r\n` is one break.
+                    self.cursor.advance(2);
                     saw_newline = true;
                 }
+                // A lone `\r` is ordinary whitespace and does not break the line.
                 Some(_) => self.cursor.advance(1),
             }
         }
