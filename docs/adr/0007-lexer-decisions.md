@@ -64,6 +64,29 @@ for `{` **ou** `#{`; fechar sem abertura correspondente apenas emite o token
   `1.2.3` = `Float(1.2) Dot Int(3)`, que não é erro léxico.
 - Expoente exige ao menos um dígito (`1e`, `1e+` são `E0005`).
 - Literal decimal ou hex/bin fora de `i64` é `E0005`, sem wrap nem truncamento.
+- Float que estoura `f64` (`1e309`, `1e999`) é `E0005` com help
+  `float literal out of range` e placeholder `Float(0.0)`; **nunca** vira
+  `Float(inf)` (ADR 0010). `1e308`, que é finito, continua válido.
+
+#### 6.1 Maiúsculas em prefixos e expoentes
+
+`0X`/`0B` e `E` **maiúsculos são aceitos**, em paridade com `0x`/`0b`/`e`:
+`0XFF` = `Int(255)`, `0B1010` = `Int(10)`, `1E10` = `Float(1e10)`,
+`1E-3` = `Float(0.001)`. É a forma mais simples e não cria ambiguidade, já que
+identificadores não podem começar com dígito.
+
+#### 6.2 `i64::MIN` não é escrevível como literal
+
+O lexer nunca aplica sinal: `-x` é `Minus` seguido do literal, e o literal
+carrega a **magnitude**. Como `9223372036854775808` não cabe em `i64`, o menor
+inteiro representável, `-9223372036854775808`, **não tem forma literal** —
+`-9223372036854775808` produz `Minus` + `E0005` (com `Int(0)` de melhor esforço).
+
+Escrever `i64::MIN` é, portanto, decisão do **M2**: ou sema dobra `Minus`
+aplicado a um literal na constante (tratando o par como um caso especial), ou o
+programa precisa de outra expressão (`(-9223372036854775807) - 1`). Nada no
+lexer muda em nenhum dos casos; o registro fica aqui para o M2 não redescobrir
+isso como bug.
 
 ### 7. Recuperação de erro
 

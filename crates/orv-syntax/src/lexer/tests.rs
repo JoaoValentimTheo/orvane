@@ -159,6 +159,46 @@ fn lexes_hex_and_binary() {
 }
 
 #[test]
+fn radix_prefixes_and_exponents_accept_uppercase() {
+    // `0X`/`0B` and `E` are accepted alongside their lowercase forms (ADR 0007).
+    assert_eq!(lex_kinds("0XFF"), vec![TokenKind::Int(255)]);
+    assert_eq!(lex_kinds("0B1010"), vec![TokenKind::Int(10)]);
+    assert_eq!(lex_kinds("1E10"), vec![TokenKind::Float(1e10)]);
+    assert_eq!(lex_kinds("1E-3"), vec![TokenKind::Float(1e-3)]);
+}
+
+#[test]
+fn i64_min_cannot_be_written_as_a_literal() {
+    // `9223372036854775808` does not fit in `i64`, so `-9223372036854775808`
+    // lexes as `Minus` plus an `E0005`. Writing `i64::MIN` is a parser/sema
+    // concern (unary minus applied to an in-range literal is not enough),
+    // recorded in ADR 0007 for M2 to decide.
+    let (tokens, diagnostics) = lex_src("-9223372036854775808");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code, "E0005");
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![TokenKind::Minus, TokenKind::Int(0)],
+        "best-effort tokens: minus plus the Int placeholder"
+    );
+}
+
+#[test]
+fn i64_max_magnitude_is_fine() {
+    // The lexer never applies the sign: `-x` is `Minus` then the literal, so
+    // the literal carries the magnitude.
+    assert_eq!(
+        lex_kinds("-9223372036854775807"),
+        vec![TokenKind::Minus, TokenKind::Int(i64::MAX)]
+    );
+}
+
+#[test]
 fn lexes_float_forms() {
     assert_eq!(lex_kinds("1.5"), vec![TokenKind::Float(1.5)]);
     assert_eq!(lex_kinds("2e10"), vec![TokenKind::Float(2e10)]);
