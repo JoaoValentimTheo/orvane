@@ -1,0 +1,16 @@
+[package]
+name = "orv-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Orvane command line interface (binary `orv`)."
+
+[[bin]]
+name = "orv"
+path = "src/main.rs"
+
+[dependencies]
+orv-syntax.workspace = true
+clap.workspace = true
