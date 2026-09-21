@@ -64,3 +64,32 @@ causa (`"abc` + `def"`), o que enganava a leitura.
   diagnósticos idênticos.
 - Os goldens `tokens_err_*` pinam o comportamento, então mudar essas regras é
   uma edição visível.
+
+## Emenda (M2, §0): o contrato do pipeline na presença de erro léxico
+
+Esta emenda **normatiza** o que o M2 deve fazer com tokens de melhor esforço.
+Ela é a razão de A–D existirem; sem ela, os placeholders seriam uma armadilha.
+
+1. **O parser roda mesmo com diagnósticos léxicos.** Os tokens de melhor esforço
+   existem para que o parser possa continuar e reportar erros sintáticos
+   adicionais, em vez de parar no primeiro caractere ruim.
+2. **Diagnósticos léxicos vêm primeiro**, na ordem do vetor de diagnóstico, e
+   antes de qualquer diagnóstico do parser. A causa raiz é o léxico.
+3. **Suprimir o diagnóstico do parser cujo span primário intersecta o de um
+   diagnóstico léxico.** Um `Int(0)`/`Float(0.0)`/`Str` parcial não é uma
+   construção que o autor escreveu, então cobrar sintaxe sobre ela é ruído: o
+   erro léxico já explicou o trecho. A interseção é sobre `[start, end)` do span
+   primário, não igualdade.
+4. **Não fazer sub-parse de `StrPart::Expr.src` cujo span contenha diagnóstico
+   léxico.** O token é de melhor esforço: o texto pode estar truncado ou conter
+   a barra invertida que gerou o `E0006`. Re-lexar esse `src` produziria erros
+   sobre uma string que não existe no arquivo.
+5. **Nunca avançar para sema/run se houver qualquer erro.** Basta um
+   diagnóstico de severidade `Error` — léxico ou sintático — para que `orv check`
+   não rode a análise semântica e `orv run` não execute. Um `Int(0)` de
+   placeholder jamais chega ao interpretador.
+
+Consequência para o M2: o parser precisa saber quais spans têm diagnóstico
+léxico. O caminho mais simples é consultar o vetor de diagnósticos que `lex`
+devolve (buscando interseção por span) antes de decidir se reporta e se faz
+sub-parse; não é preciso flag novo no `Token`.

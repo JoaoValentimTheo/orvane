@@ -60,3 +60,51 @@ fn assert_spans_are_valid(tokens: &[Token], file_len: usize) {
         previous_end = end;
     }
 }
+
+#[test]
+fn lexical_diagnostics_cover_their_best_effort_token() {
+    // ADR 0008 (emenda, M2): a parser diagnostic whose primary span intersects
+    // a lexical one must be suppressed. This pins the raw material the parser
+    // needs: for every lexical error, some token span intersects it, so the
+    // parser can find the offending region without a new `Token` flag.
+    for source in ["0x", "\"abc", "\"a\\q\"", "1e999", "\"a}b\""] {
+        let (tokens, diagnostics) = lex_src(source);
+        assert!(!diagnostics.is_empty(), "for {source:?}");
+        for diagnostic in &diagnostics {
+            assert!(
+                tokens.iter().any(|t| t.span.intersects(diagnostic.primary)),
+                "no token intersects {} for {source:?}: {tokens:?}",
+                diagnostic.code
+            );
+        }
+    }
+}
+
+#[test]
+fn a_newline_after_an_erroneous_token_does_not_overlap_it() {
+    // The `Newline` point sits after the broken literal (byte 11 vs span 8..10),
+    // so the parser still sees a statement terminator and can resynchronise.
+    // A point span only intersects when it lands inside the error, which is what
+    // keeps suppression from swallowing unrelated diagnostics.
+    let (tokens, diagnostics) = lex_src("let x = 0x\nlet y = 1\n");
+    let e0005 = diagnostics
+        .iter()
+        .find(|d| d.code == "E0005")
+        .map(|d| d.primary);
+    let e0005 = match e0005 {
+        Some(span) => span,
+        None => panic!("expected E0005, got {diagnostics:?}"),
+    };
+    assert!(
+        tokens.iter().any(|t| t.span.intersects(e0005)),
+        "something must intersect the error: {tokens:?}"
+    );
+    let newline_after_error = tokens
+        .iter()
+        .find(|t| t.is_newline() && t.span.start > e0005.end)
+        .is_some();
+    assert!(
+        newline_after_error,
+        "the statement terminator must survive so the parser can resync: {tokens:?}"
+    );
+}
