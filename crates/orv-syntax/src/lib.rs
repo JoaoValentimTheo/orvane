@@ -5,6 +5,7 @@
 //! in M2.
 
 pub mod diagnostic;
+pub mod dump;
 pub mod lexer;
 pub mod render;
 pub mod source;
