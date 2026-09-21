@@ -26,15 +26,25 @@ fn lex_kinds(text: &str) -> Vec<TokenKind> {
 
 /// Lexes `text`, returning tokens (including `Eof`) and diagnostics.
 fn lex_src(text: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+    let (_sources, _file, tokens, diagnostics) = lex_with_sources(text);
+    (tokens, diagnostics)
+}
+
+/// Lexes `text`, also returning the source map and file so callers can render.
+fn lex_with_sources(text: &str) -> (SourceMap, SourceFile, Vec<Token>, Vec<Diagnostic>) {
     let mut sources = SourceMap::new();
     let id = sources.add("test.orv", text);
-    let file = sources.file(id).cloned().unwrap_or_else(|| SourceFile {
-        id: FileId(0),
-        name: "test.orv".to_owned(),
-        path: None,
-        text: std::rc::Rc::from(text),
-    });
-    lex(&file)
+    let file = match sources.file(id).cloned() {
+        Some(file) => file,
+        None => SourceFile {
+            id: FileId(0),
+            name: "test.orv".to_owned(),
+            path: None,
+            text: std::rc::Rc::from(text),
+        },
+    };
+    let (tokens, diagnostics) = lex(&file);
+    (sources, file, tokens, diagnostics)
 }
 
 /// Lexes `text`, asserting exactly `n` diagnostics and returning their codes.
@@ -442,12 +452,7 @@ fn triple_dash_is_not_a_single_operator() {
     // `-->` is not in §5.1: it is `-` followed by `->`.
     assert_eq!(
         lex_kinds("a-->b"),
-        vec![
-            ident("a"),
-            TokenKind::Minus,
-            TokenKind::Arrow,
-            ident("b")
-        ]
+        vec![ident("a"), TokenKind::Minus, TokenKind::Arrow, ident("b")]
     );
     // Sanity: the intermediate `--` is still two `-`, never a token.
     assert_eq!(
@@ -560,10 +565,26 @@ fn lone_carriage_return_is_whitespace() {
 
 #[test]
 fn bom_is_ignored() {
+    // `SourceMap::add` strips the leading BOM, so the lexer never sees it.
     assert_eq!(
         lex_kinds("\u{feff}fn main"),
         vec![TokenKind::Kw(Keyword::Fn), ident("main")]
     );
+}
+
+#[test]
+fn second_bom_is_an_invalid_character() {
+    // Only the first BOM is stripped (by `SourceMap::add`); a second one is
+    // ordinary content the lexer must reject, not silently eat.
+    let (tokens, diagnostics) = lex_src("\u{feff}\u{feff}x");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code, "E0001");
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![ident("x")]);
 }
 
 #[test]
@@ -759,7 +780,9 @@ proptest! {
     }
 
     /// Structured fragments exercise the interaction of strings, comments,
-    /// braces and numbers, checking the invariants on the result.
+    /// braces and numbers, checking the invariants on the result — including
+    /// on the spans attached to diagnostics, and that the downstream renderers
+    /// never panic either.
     #[test]
     fn lex_invariants_hold(
         fragments in prop::collection::vec(
@@ -768,12 +791,18 @@ proptest! {
                 "\\n", "/*", "*/", "//", "1", "1.", "1..5", "0x", "0xFF", "_", "??", "?.", "..=",
                 "=>", "->", "\n", "\r\n", " ", "a", "é", "!", "x => {\n", "\"a{b}c\"",
                 "#{\n1: 2\n}", ";", ", ",
+                // Added in M1.1: BOM, bare CR, astral char, the rejected `-->`
+                // pseudo-operator, and a backslash followed by a real newline.
+                "\u{feff}", "\r", "😀", "-->", "\\\n",
             ]),
             0..24,
         )
     ) {
         let text: String = fragments.concat();
-        let (tokens, _diagnostics) = lex_src(&text);
+        let (sources, file, tokens, diagnostics) = lex_with_sources(&text);
+        // Spans are offsets into `SourceFile::text()`, which is the input with
+        // the leading BOM already stripped by `SourceMap::add`.
+        let file_text = file.text();
 
         prop_assert!(tokens.last().is_some_and(|t| t.is_eof()), "must end with Eof");
 
@@ -781,16 +810,33 @@ proptest! {
         for token in &tokens {
             let (start, end) = (token.span.start, token.span.end);
             prop_assert!(start <= end);
-            prop_assert!((end as usize) <= text.len());
+            prop_assert!((end as usize) <= file_text.len());
             prop_assert!(start >= previous_end, "overlapping spans");
-            prop_assert!(text.is_char_boundary(start as usize));
-            prop_assert!(text.is_char_boundary(end as usize));
+            prop_assert!(file_text.is_char_boundary(start as usize));
+            prop_assert!(file_text.is_char_boundary(end as usize));
             // ADR 0007: a `Newline` is a zero-width point, so it cannot cover
             // bytes that belong to another token.
             if token.is_newline() {
                 prop_assert_eq!(start, end, "Newline must be zero-width");
             }
             previous_end = end;
+        }
+
+        // Diagnostic spans obey the same bounds and char-boundary rules, and
+        // must not start after they end.
+        for diagnostic in &diagnostics {
+            let (start, end) = (diagnostic.primary.start, diagnostic.primary.end);
+            prop_assert!(start <= end, "diagnostic span is backwards");
+            prop_assert!((end as usize) <= file_text.len(), "diagnostic span out of bounds");
+            prop_assert!(file_text.is_char_boundary(start as usize));
+            prop_assert!(file_text.is_char_boundary(end as usize));
+        }
+
+        // The renderers must not panic on any lexer output.
+        let _ = crate::dump::dump_tokens(&file, &tokens);
+        let mut compact = String::new();
+        for diagnostic in &diagnostics {
+            compact.push_str(&diagnostic.render_compact(&sources));
         }
     }
 }
