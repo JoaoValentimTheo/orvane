@@ -12,7 +12,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 128 testes de unidade + 2 proptests |
 | M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
 | M1.2 | últimos ajustes: teste de stdout determinístico, paridade LF/CRLF com `\`, `E0006` por interpolação, float fora de faixa, docs, testes divididos | **Implemented** | mesmo gate; 17 goldens `tokens_*` |
-| M2 | parser + `orv ast` | In progress (fundações) | §4.1–§4.2 parseiam |
+| M2 | parser + `orv ast` | In progress (primary) | §4.1–§4.2 parseiam |
 | M3 | sema v1 (nomes e tipos) | Planned | `orv check` |
 | M4 | interpretador v1 | Planned | `orv run examples/fib.orv` |
 | M5 | `data`/`enum`/`match` | Planned | §4.2 roda; `match` não exaustivo rejeitado |
@@ -56,7 +56,13 @@ pipeline (ADR 0008, emenda).
 | `Span::intersects` para supressão de diagnóstico do parser | `intersects_detects_overlap`, `intersects_treats_a_point_span_as_inside`, `intersects_requires_the_same_file`, `intersects_two_point_spans` |
 | Contrato do pipeline com erro léxico (léxico primeiro; suprimir parser por interseção; sem sub-parse de `Expr.src`; nunca sema/run) | **contrato** (ADR 0008, emenda) — a implementação é do M2. Material bruto coberto por `lexical_diagnostics_cover_their_best_effort_token`, `a_newline_after_an_erroneous_token_does_not_overlap_it` |
 | `i64::MIN` sem literal: `(-9223372036854775807) - 1` (ADR 0007 §6.2) | `i64_min_cannot_be_written_as_a_literal`, `the_overflowing_magnitude_is_not_recoverable_from_tokens` |
-| `Float Dot Int` (`1.2.3`) é erro **sintático** `E0102`, não léxico (ADR 0011) | **decisão** — o parser é do M2. Intenção pinada por `float_dot_int_is_a_syntax_error_by_grammar` |
+| `Float Dot Int` (`1.2.3`) é erro **sintático** `E0102`, não léxico (ADR 0011) | decisão registrada; `float_dot_int_is_a_syntax_error_by_grammar` (lexer) |
+| AST de primary: `Literal`/`Ident`/`Paren`/`Block`, `Span` em todo nó | `parser::tests::*` |
+| Parser de primary: literal, `ident`, `( expr )`, bloco esqueleto | suíte `parser::tests` (28 casos) |
+| `E0102` quando falta `)` ou `}` | `missing_closing_paren_reports_e0102`, `unclosed_block_reports_e0102`, `empty_parens_report_e0102` |
+| Diagnóstico do parser suprimido por erro léxico (ADR 0008 regra 3) | `a_parser_error_inside_a_broken_literal_is_suppressed`, `without_suppression_that_parser_error_would_exist` |
+| `should_subparse_expr` respeitado no parser (ADR 0008 regra 4) | `a_string_with_a_lexical_error_blocks_the_subparse_and_adds_nothing`, `the_subparse_guard_is_consulted_for_strings` |
+| Gate sema/run documentado (`ParseResult::has_errors`) | `no_errors_means_the_sema_gate_is_open`, `lexical_diagnostics_come_first_and_suppress_the_parser` |
 
 ## Features do M1 (lexer)
 
