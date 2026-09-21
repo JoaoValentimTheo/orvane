@@ -12,7 +12,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 128 testes de unidade + 2 proptests |
 | M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
 | M1.2 | últimos ajustes: teste de stdout determinístico, paridade LF/CRLF com `\`, `E0006` por interpolação, float fora de faixa, docs, testes divididos | **Implemented** | mesmo gate; 17 goldens `tokens_*` |
-| M2 | parser + `orv ast` | Planned | §4.1–§4.2 parseiam |
+| M2 | parser + `orv ast` | In progress (fundações) | §4.1–§4.2 parseiam |
 | M3 | sema v1 (nomes e tipos) | Planned | `orv check` |
 | M4 | interpretador v1 | Planned | `orv run examples/fib.orv` |
 | M5 | `data`/`enum`/`match` | Planned | §4.2 roda; `match` não exaustivo rejeitado |
@@ -29,8 +29,8 @@ teste golden que a exercita. Sem teste → `Planned`.
 | Feature | Teste que a exercita |
 |---|---|
 | Workspace com 6 crates + regra de dependência unidirecional | build/clippy de todos os membros; `crates/orv-{sema,runtime,py,pymod}/src/lib.rs` (`crate_is_wired`) |
-| `Span` (`file`/`start`/`end`, `to`, `len`, `point`) | unidade em `crates/orv-syntax/src/span.rs` |
-| `SourceMap`/`SourceFile`/`FileId` (BOM, `line_col` 1-based) | unidade em `crates/orv-syntax/src/source.rs` |
+| `Span` (`file`/`start`/`end`, `to`, `len`, `point`, `intersects`) | unidade em `crates/orv-syntax/src/span.rs` |
+| `SourceMap`/`SourceFile`/`FileId` (BOM, `line_col` 1-based, índice de inícios de linha O(log n)) | unidade em `crates/orv-syntax/src/source.rs` |
 | `Diagnostic` + formato `.err` estável `CODE:linha:coluna: mensagem` | unidade em `crates/orv-syntax/src/diagnostic.rs` |
 | Renderização `ariadne` (ASCII, sem cor, determinística) | unidade em `crates/orv-syntax/src/render.rs` |
 | CLI `orv version` | unidade em `crates/orv-cli/src/cli.rs` + golden `tests/golden/version` |
@@ -41,9 +41,21 @@ teste golden que a exercita. Sem teste → `Planned`.
 | `orv version` emite LF em qualquer SO (bytes crus) | `version_stdout_contains_no_carriage_return` |
 | Fim de linha estável no golden (Linux + Windows) | `decode_output_normalizes_crlf`, `decode_output_keeps_lf_and_lone_cr`; `.gitattributes` |
 | CI Linux + Windows (fmt/clippy/test, `--locked`) | `.github/workflows/ci.yml` |
-| `AGENTS.md`, `docs/errors.md`, `docs/adr/` | revisão; ADRs 0001–0007 |
+| `AGENTS.md`, `docs/errors.md`, `docs/adr/` | revisão; ADRs 0001–0010 |
 | Licenças MIT **ou** Apache-2.0 | `LICENSE-MIT`, `LICENSE-APACHE`, `license.workspace` |
 | README mínimo com status honesto | `README.md` (status gerado de `docs/STATUS.md`) |
+
+## Fundações do M2 (parser)
+
+Ainda não há parser; estes itens preparam o M2 e são pré-requisito do contrato do
+pipeline (ADR 0008, emenda).
+
+| Feature | Teste que a exercita |
+|---|---|
+| Índice de inícios de linha em `SourceFile` (`line_col` deixa de ser O(n)) | `line_starts_index_every_line`, `line_starts_of_an_empty_file_is_just_zero`, `line_starts_treat_crlf_as_one_break`, `line_starts_ignore_a_lone_carriage_return`, `line_col_matches_a_naive_scan_on_every_offset` (offset a offset), `line_col_is_at_least_linear_only_once_per_file` |
+| `Span::intersects` para supressão de diagnóstico do parser | `intersects_detects_overlap`, `intersects_treats_a_point_span_as_inside`, `intersects_requires_the_same_file`, `intersects_two_point_spans` |
+| Contrato do pipeline com erro léxico (léxico primeiro; suprimir parser por interseção; sem sub-parse de `Expr.src`; nunca sema/run) | **contrato** (ADR 0008, emenda) — a implementação é do M2. Material bruto coberto por `lexical_diagnostics_cover_their_best_effort_token`, `a_newline_after_an_erroneous_token_does_not_overlap_it` |
+| `i64::MIN` sem literal: `(-9223372036854775807) - 1` (ADR 0007 §6.2) | `i64_min_cannot_be_written_as_a_literal`, `the_overflowing_magnitude_is_not_recoverable_from_tokens` |
 
 ## Features do M1 (lexer)
 

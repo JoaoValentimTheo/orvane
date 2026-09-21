@@ -49,6 +49,19 @@ diagnóstico, um token que cobre o trecho lido: `Str(parts)` com as partes já
 lidas para `E0002`/`E0004`/`E0006`, e `Int(0)`/`Float(0.0)` para `E0005`. A
 stream continua cobrindo o arquivo; a validade é decidida pelos diagnósticos.
 
+### Ordem e supressão de diagnósticos (ADR 0008, emenda do M2)
+
+Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
+
+1. diagnósticos léxicos são emitidos **primeiro**;
+2. o parser roda mesmo assim, mas um diagnóstico do parser cujo span primário
+   **intersecta** o de um diagnóstico léxico é **suprimido** (a construção veio
+   de um token de melhor esforço);
+3. `StrPart::Expr.src` de um `Str` que contém diagnóstico léxico **não** é
+   re-parseado;
+4. com qualquer erro — léxico ou sintático — `orv check` não roda sema e
+   `orv run` não executa.
+
 ## E01xx — parser
 
 | Código | Mensagem | Exemplo mínimo | Status |
