@@ -1,4 +1,4 @@
-//! Stable textual rendering of tokens, used by `orv tokens` (ADR 0008).
+//! Stable textual rendering of tokens, used by `orv tokens` (ADR 0006).
 //!
 //! The format is one line per token:
 //!

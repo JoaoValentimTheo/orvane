@@ -4,7 +4,7 @@
 3:30 Str[Lit("Olá "), Expr("name")]
 3:43 Str[Lit("{literal}")]
 3:57 Str[Expr("a + b")]
-3:67 Str[Expr("f(\\\"a\\\")")]
-3:80 Str[Lit("{"), Expr("x"), Lit("}")]
+3:67 Str[Expr("f(\"a\")")]
+3:78 Str[Lit("{"), Expr("x"), Lit("}")]
 4:1 Newline
 4:1 Eof

@@ -21,8 +21,11 @@ use super::token::StrPart;
 pub(super) enum StringOutcome {
     /// A well-formed string, with at least one part (possibly empty text).
     Parts(Vec<StrPart>),
-    /// The literal is malformed; diagnostics were already reported.
-    Invalid,
+    /// The literal is malformed. Diagnostics were already reported and the
+    /// cursor consumed up to the end of the literal; the payload holds the
+    /// parts read before the error, so the caller can still emit a `Str` token
+    /// (ADR 0008).
+    Invalid(Vec<StrPart>),
 }
 
 /// Scans a string literal. The caller guarantees `cursor` is at the opening `"`.
@@ -51,7 +54,8 @@ pub(super) fn scan_string(
                     )
                     .with_help("add a closing `\"`"),
                 );
-                return StringOutcome::Invalid;
+                flush(&mut parts, &mut lit);
+                return StringOutcome::Invalid(parts);
             }
             Some(b'\n') => {
                 // A raw newline is not allowed inside a string (SPEC §5.1).
@@ -64,7 +68,8 @@ pub(super) fn scan_string(
                     .with_label(span(file, start, start + 1), "line break here")
                     .with_help("use `\\n` for a newline inside a string"),
                 );
-                return StringOutcome::Invalid;
+                flush(&mut parts, &mut lit);
+                return StringOutcome::Invalid(parts);
             }
             Some(b'"') => {
                 cursor.advance(1);
@@ -82,8 +87,16 @@ pub(super) fn scan_string(
                 } else {
                     flush(&mut parts, &mut lit);
                     match scan_interpolation(cursor, file, diagnostics) {
-                        Some(part) => parts.push(part),
-                        None => ok = false,
+                        Interpolation::Part(part) => parts.push(part),
+                        // An inner error that still closed the interpolation:
+                        // keep going so the enclosing string can terminate.
+                        Interpolation::Recovered => ok = false,
+                        // The interpolation already reported the outermost
+                        // `E0002`; stop so the string does not add a second
+                        // diagnostic for the same cause (ADR 0008 D).
+                        Interpolation::Unterminated => {
+                            return StringOutcome::Invalid(parts);
+                        }
                     }
                 }
             }
@@ -112,10 +125,10 @@ pub(super) fn scan_string(
     }
 
     flush(&mut parts, &mut lit);
-    if !ok {
-        StringOutcome::Invalid
-    } else {
+    if ok {
         StringOutcome::Parts(parts)
+    } else {
+        StringOutcome::Invalid(parts)
     }
 }
 
@@ -184,15 +197,32 @@ fn scan_escape(
     true
 }
 
-/// Scans a `{expr}` interpolation, returning the expression part.
+/// How an interpolation scan ended.
+enum Interpolation {
+    /// A usable expression part.
+    Part(StrPart),
+    /// An error was reported, but the interpolation did close: keep scanning the
+    /// enclosing string (e.g. `"{}"` reported `E0006` and the string still ends
+    /// with a quote).
+    Recovered,
+    /// The interpolation never closed. The outermost `E0002` was reported and
+    /// the enclosing string must stop (ADR 0008 D).
+    Unterminated,
+}
+
+/// Scans a `{expr}` interpolation.
 ///
 /// The expression source is captured verbatim (spans point into the file) and
 /// nested strings and braces are skipped so `"{f("a")}"` works.
+///
+/// A `\` inside the interpolation is `E0006` (ADR 0008): the expression is
+/// re-lexed by the parser, and nested strings are written raw. Scanning still
+/// continues to the closing `}` so the rest of the string is not lost.
 fn scan_interpolation(
     cursor: &mut Cursor<'_>,
     file: FileId,
     diagnostics: &mut Vec<Diagnostic>,
-) -> Option<StrPart> {
+) -> Interpolation {
     let open = cursor.pos();
     cursor.advance(1); // the `{`
     let content_start = cursor.pos();
@@ -201,6 +231,8 @@ fn scan_interpolation(
     loop {
         match cursor.peek() {
             None | Some(b'\n') => {
+                // Decision D: a single, outermost `E0002` for the unclosed
+                // interpolation, regardless of how many inner problems there were.
                 diagnostics.push(
                     Diagnostic::error(
                         "E0002",
@@ -209,19 +241,30 @@ fn scan_interpolation(
                     )
                     .with_help("add a closing `}` and `\"`"),
                 );
-                return None;
+                return Interpolation::Unterminated;
             }
             Some(b'\\') => {
-                // Outside a nested string, `\` escapes the next character, so
-                // `\"` is a literal quote and must not open a nested string.
-                // This is what makes `"{f(\"a\")}"` work.
+                // A backslash is not an escape here; nested strings are raw.
+                // Report `E0006` over the `\`, then consume the following
+                // character as well: it belongs to the expression text, and
+                // letting a quote open a nested string would swallow the
+                // interpolation's closing `}`.
+                let start = cursor.pos();
                 cursor.advance(1);
                 cursor.bump_char();
+                diagnostics.push(
+                    Diagnostic::error(
+                        "E0006",
+                        "invalid interpolation: `\\` is not an escape",
+                        span(file, start, start + 1),
+                    )
+                    .with_help(r#"write nested strings without escaping: {f("a")}"#),
+                );
             }
             Some(b'"') => {
                 // Skip a nested string so its braces do not affect depth.
                 if !skip_nested_string(cursor, file, diagnostics) {
-                    return None;
+                    return Interpolation::Unterminated;
                 }
             }
             Some(b'{') => {
@@ -247,9 +290,12 @@ fn scan_interpolation(
                             )
                             .with_help("write an expression between `{` and `}`"),
                         );
-                        return None;
+                        return Interpolation::Recovered;
                     }
-                    return Some(StrPart::Expr {
+                    // The expression source is still returned after the `\`
+                    // error above so the parser can re-lex it; the diagnostic
+                    // already invalidated the string (ADR 0008).
+                    return Interpolation::Part(StrPart::Expr {
                         src,
                         span: span(file, content_start, content_end),
                     });

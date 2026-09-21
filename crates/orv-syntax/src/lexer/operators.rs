@@ -23,12 +23,17 @@ impl Lexer<'_> {
         self.closer_any(kind, &[expected], len);
     }
 
-    /// Emits a closing token that may match more than one opener, popping the
-    /// innermost when it matches. An unmatched closer is still emitted.
+    /// Emits a closing token that may match more than one opener.
+    ///
+    /// If a matching opener exists anywhere on the stack, everything above it is
+    /// discarded — the closer implicitly ends the unbalanced openers inside it
+    /// (ADR 0008). Without this, `f(1 }` left the `(` on the stack and the next
+    /// `Newline` was suppressed. When no opener matches, only the token is
+    /// emitted and the stack is left untouched.
     pub(super) fn closer_any(&mut self, kind: TokenKind, expected: &[Delimiter], len: usize) {
         let start = self.cursor.pos();
-        if self.delimiters.last().is_some_and(|d| expected.contains(d)) {
-            self.delimiters.pop();
+        if let Some(index) = self.delimiters.iter().rposition(|d| expected.contains(d)) {
+            self.delimiters.truncate(index);
         }
         self.cursor.advance(len);
         self.push(kind, start, self.cursor.pos());

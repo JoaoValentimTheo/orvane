@@ -1,4 +1,4 @@
-//! Numeric literal scanning (SPEC §5.1, ADR 0006).
+//! Numeric literal scanning (SPEC §5.1, ADR 0007).
 //!
 //! Supported forms:
 //!
@@ -25,9 +25,11 @@ pub(super) enum NumberOutcome {
     Int(i64),
     /// A well-formed float literal.
     Float(f64),
-    /// The literal is malformed; the diagnostic has already been built and the
-    /// cursor has consumed the offending characters.
-    Invalid,
+    /// The literal is malformed. A diagnostic was reported and the cursor
+    /// consumed the offending characters; the boolean says whether the text
+    /// looked like a float, so the caller can emit `Float(0.0)` instead of
+    /// `Int(0)` (ADR 0008).
+    Invalid { looked_like_float: bool },
 }
 
 /// Scans a numeric literal starting at a decimal or `0` digit.
@@ -105,7 +107,7 @@ fn scan_decimal(
             .get(exp_digits_start..cursor.pos())
             .unwrap_or("");
         if exp_digits.is_empty() || !exp_digits.bytes().all(|b| b.is_ascii_digit()) {
-            return invalid(
+            return invalid_float(
                 cursor,
                 file,
                 diagnostics,
@@ -123,7 +125,7 @@ fn scan_decimal(
     if is_float {
         match cleaned.parse::<f64>() {
             Ok(value) => NumberOutcome::Float(value),
-            Err(_) => invalid(cursor, file, diagnostics, start, end, None),
+            Err(_) => invalid_float(cursor, file, diagnostics, start, end, None),
         }
     } else {
         match cleaned.parse::<i64>() {
@@ -230,6 +232,9 @@ fn exponent_length(cursor: &Cursor<'_>) -> Option<usize> {
 }
 
 /// Builds an `E0005` diagnostic and returns [`NumberOutcome::Invalid`].
+///
+/// `looked_like_float` picks the placeholder token kind the caller emits
+/// (ADR 0008).
 fn invalid(
     _cursor: &Cursor<'_>,
     file: crate::source::FileId,
@@ -237,6 +242,31 @@ fn invalid(
     start: usize,
     end: usize,
     help: Option<&str>,
+) -> NumberOutcome {
+    invalid_as(_cursor, file, diagnostics, start, end, help, false)
+}
+
+/// Like [`invalid`], but records whether the literal had a fractional or
+/// exponent part so the placeholder token is a `Float`.
+fn invalid_float(
+    _cursor: &Cursor<'_>,
+    file: crate::source::FileId,
+    diagnostics: &mut Vec<Diagnostic>,
+    start: usize,
+    end: usize,
+    help: Option<&str>,
+) -> NumberOutcome {
+    invalid_as(_cursor, file, diagnostics, start, end, help, true)
+}
+
+fn invalid_as(
+    _cursor: &Cursor<'_>,
+    file: crate::source::FileId,
+    diagnostics: &mut Vec<Diagnostic>,
+    start: usize,
+    end: usize,
+    help: Option<&str>,
+    looked_like_float: bool,
 ) -> NumberOutcome {
     let span = Span::new(file, start as u32, end as u32);
     let mut diagnostic = Diagnostic::error("E0005", "invalid numeric literal", span);
@@ -247,5 +277,5 @@ fn invalid(
             .with_help("`_` may only appear between digits; `0x`/`0b` need at least one digit");
     }
     diagnostics.push(diagnostic);
-    NumberOutcome::Invalid
+    NumberOutcome::Invalid { looked_like_float }
 }

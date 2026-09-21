@@ -9,8 +9,8 @@ teste golden que a exercita. Sem teste → `Planned`.
 |---|---|---|---|
 | M0 | bootstrap do workspace, `Span`/`SourceMap`/`Diagnostic`, harness golden, CI | **Implemented** | `cargo test` roda o harness com 1 caso golden; `orv version` imprime a versão |
 | M0.1 | hardening: harness estrito, LF no `version`, licenças, README, CI `--locked` | **Implemented** | `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace` (sem features novas da linguagem) |
-| M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 104 testes de unidade + 2 proptests |
-| M1 | lexer | **Implemented** | `orv tokens x.orv` |
+| M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 118 testes de unidade + 2 proptests |
+| M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
 | M2 | parser + `orv ast` | Planned | §4.1–§4.2 parseiam |
 | M3 | sema v1 (nomes e tipos) | Planned | `orv check` |
 | M4 | interpretador v1 | Planned | `orv run examples/fib.orv` |
@@ -54,16 +54,21 @@ teste golden que a exercita. Sem teste → `Planned`.
 | `.` só inicia fração antes de dígito | `dot_only_starts_a_fraction_before_a_digit`, `chained_dots_are_not_a_number_error` |
 | `E0005` literal numérico inválido | `invalid_numbers_report_e0005`; golden `tokens_err_bad_number` |
 | Str com escapes, `{{`/`}}`, interpolação | `lexes_plain_string_with_escapes`, `lexes_interpolation`, `literal_braces_via_doubling` |
-| Interpolação aninhada (strings e chaves) | `interpolation_allows_nested_strings_and_braces`, `escaped_quotes_inside_interpolation_do_not_close_the_string`, `literal_braces_around_an_interpolation` |
-| `E0002` / `E0004` / `E0006` | `unterminated_string_reports_e0002`, `raw_newline_in_string_reports_e0002`, `unknown_escape_reports_e0004`, `lone_closing_brace_reports_e0006`, `empty_interpolation_reports_e0006`, `unclosed_interpolation_reports_e0002`; goldens `tokens_err_*` |
+| Interpolação aninhada (strings e chaves) | `interpolation_allows_nested_strings_and_braces`, `interpolation_with_a_raw_nested_string_is_valid`, `literal_braces_around_an_interpolation` |
+| `E0002` / `E0004` / `E0006` | `unterminated_string_reports_e0002`, `raw_newline_in_string_reports_e0002`, `unknown_escape_reports_e0004`, `lone_closing_brace_reports_e0006`, `empty_interpolation_reports_e0006`, `unclosed_interpolation_reports_e0002`, `unclosed_interpolation_reports_a_single_e0002`, `backslash_inside_interpolation_is_e0006`, `backslash_before_a_line_break_reports_e0004_on_the_backslash_only`, `unknown_escape_message_uses_escape_debug`; goldens `tokens_err_*` |
 | Todos os operadores + maximal munch | `lexes_all_operators`, `maximal_munch_prefers_longer_operators` |
 | `E0001` caractere inválido (e não-ASCII) | `invalid_characters_report_e0001_and_continue`, `non_ascii_outside_strings_reports_e0001_with_ascii_help`; golden `tokens_err_invalid_char` |
 | Comentários `//` e `/* */` aninhável; `E0003` | `line_comment_does_not_consume_the_newline`, `block_comments_are_nestable`, `block_comment_with_newline_counts_as_one_newline`, `unterminated_block_comment_reports_e0003`; goldens `tokens_comments`, `tokens_err_block_comment` |
-| Newline: colapso, CRLF, `\r` isolado, BOM | `no_newline_at_start_of_file`, `consecutive_newlines_collapse`, `crlf_is_one_line_break`, `lone_carriage_return_is_whitespace`, `bom_is_ignored` |
+| Newline: colapso, CRLF, `\r` isolado | `no_newline_at_start_of_file`, `consecutive_newlines_collapse`, `crlf_is_one_line_break`, `lone_carriage_return_is_whitespace`, `lone_carriage_return_does_not_end_a_line_comment`, `carriage_return_newline_does_end_a_line_comment`, `lone_carriage_return_inside_a_block_comment_is_not_a_newline`, `crlf_inside_a_block_comment_is_one_newline`; golden `tokens_crlf` |
+| BOM (primeiro é ignorado; o segundo é `E0001`) | **unit-only** — `bom_is_ignored`, `second_bom_is_an_invalid_character`, `cursor_does_not_strip_a_bom`. O harness não consegue representar BOM no cabeçalho, então não há golden |
 | Pilha de delimitadores (§5.1 regra 1) | `parens_suppress_newlines`, `brackets_suppress_newlines`, `hash_brace_suppresses_newlines`, `block_brace_keeps_newlines_significant_inside_parens`, `nested_delimiters_use_the_innermost_context`, `newline_after_closing_hash_brace_is_emitted` |
 | **Teste obrigatório**: lambda com bloco em chamada | `block_brace_keeps_newlines_significant_inside_parens`; golden `tokens_block_lambda` |
 | **Teste obrigatório**: `#{ }` multilinha | `hash_brace_suppresses_newlines`; golden `tokens_map_multiline` |
 | Fechamento sem abertura não dá panic | `unmatched_closers_do_not_panic` |
+| Pilha desenrola até o abridor correspondente (ADR 0008 B) | `a_closer_unwinds_mismatched_openers_above_its_match`, `a_closer_with_no_match_leaves_the_stack_alone` |
+| Token de melhor esforço em erro léxico (ADR 0008 A) | `error_tokens_are_best_effort`, `lexes_i64_boundaries`, `unterminated_string_does_not_stop_the_lexer`; goldens `tokens_err_*` |
+| `-->` não é operador | `triple_dash_is_not_a_single_operator` |
+| `orv tokens` não dá panic com stdout fechado | `tokens_with_closed_stdout_does_not_panic`, `tokens_on_a_missing_file_reports_usage_error` (`crates/orv-cli/tests/output_failures.rs`) |
 | Invariantes: `Eof` final, spans no arquivo/ordenados/disjuntos | `always_ends_with_eof`, `spans_are_ordered_and_within_the_file`, `token_spans_match_the_source_text`, `assert_spans_are_valid` |
 | proptest: `lex` nunca dá panic | `lex_never_panics` |
 | proptest: invariantes com alfabeto de fragmentos | `lex_invariants_hold` |

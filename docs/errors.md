@@ -18,21 +18,32 @@ Todo código novo **deve** ser adicionado aqui com exemplo mínimo (§8.2).
 | `E0001` | caractere inválido | `§` · `@` · `!` (sozinho) · identificador não-ASCII | **M1** |
 | `E0002` | string não terminada | `"abc` · `"abc<newline>` · `"{a` | **M1** |
 | `E0003` | comentário não fechado | `/* abc` | **M1** |
-| `E0004` | escape inválido | `"a\q"` | **M1** |
+| `E0004` | escape inválido | `"a\q"` · `"a\<quebra de linha>` | **M1** |
 | `E0005` | literal numérico inválido | `0x` · `0b` · `1__0` · `1_` · `1e` · `9223372036854775808` | **M1** |
-| `E0006` | interpolação inválida | `"a}b"` · `"{}"` | **M1** |
+| `E0006` | interpolação inválida | `"a}b"` · `"{}"` · `"{f(\"a\")}"` | **M1** |
 
 Notas de comportamento (M1):
 
 - `E0001`: o caractere inválido é consumido e o lexer **continua**; `!` só é
   válido como `!=`. Caractere não-ASCII fora de string/comentário leva o help
-  "identifiers are ASCII-only in v0.1".
+  "identifiers are ASCII-only in v0.1". **Só o primeiro BOM é ignorado** (por
+  `SourceMap::add`); um segundo BOM é `E0001`.
 - `E0002`: uma quebra de linha crua dentro da string também é `E0002`; use `\n`.
+  Uma interpolação não fechada gera **um único** `E0002`, o mais externo.
 - `E0003`: comentários de bloco são aninháveis; um `/*` sem `*/` consome o resto
   do arquivo e é reportado uma única vez.
+- `E0004`: a mensagem usa `escape_debug`, então nunca contém caractere de
+  controle cru. `\` seguido de **quebra de linha** é `E0004` com span apenas
+  sobre a `\`, e a quebra **não** é consumida (segue valendo como fim de linha).
 - `E0005`: a mensagem não distingue os casos; o `help` diz o motivo
   (`_` fora de dígitos, prefixo sem dígitos, ou literal fora de `i64`).
-- `E0006`: `}` sem `{` (help "use }}") e interpolação vazia `{}`.
+- `E0006`: `}` sem `{` (help "use }}"), interpolação vazia `{}`, e `\` dentro de
+  `{...}` (help: escreva `{f("a")}` sem escape).
+
+**Tokens de melhor esforço (ADR 0008).** Todo erro léxico emite, além do
+diagnóstico, um token que cobre o trecho lido: `Str(parts)` com as partes já
+lidas para `E0002`/`E0004`/`E0006`, e `Int(0)`/`Float(0.0)` para `E0005`. A
+stream continua cobrindo o arquivo; a validade é decidida pelos diagnósticos.
 
 ## E01xx — parser
 

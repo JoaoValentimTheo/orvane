@@ -19,8 +19,9 @@ sobre a quebra. Consequências:
 - os spans continuam disjuntos e em ordem crescente (invariante do M1), o que
   seria falso se `Newline` cobrisse os bytes `\n` que também pertencem ao
   intervalo entre dois tokens;
-- a coluna reportada é a primeira da linha seguinte, que é exatamente onde o
-  parser retoma.
+- a coluna reportada é a **posição do próximo token** (a primeira coluna da
+  linha seguinte), que é exatamente onde o parser retoma. Consequência prática:
+  num arquivo `a\nb`, o `Newline` aparece em `2:1`, não em `1:2`.
 
 ### 2. Sem `Newline` no início do arquivo
 

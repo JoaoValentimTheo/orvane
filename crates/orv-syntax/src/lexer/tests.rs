@@ -187,14 +187,17 @@ fn lexes_i64_boundaries() {
         lex_kinds("9223372036854775807"),
         vec![TokenKind::Int(i64::MAX)]
     );
-    // One past `i64::MAX` is `E0005`, not a wrapped or truncated value.
+    // One past `i64::MAX` is `E0005`, with a best-effort `Int(0)` token so the
+    // stream still covers the literal (ADR 0008).
     let (tokens, diagnostics) = lex_src("9223372036854775808");
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].code, "E0005");
-    assert!(
-        tokens.iter().all(|t| t.is_eof()),
-        "an invalid literal produces no token: {tokens:?}"
-    );
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![TokenKind::Int(0)]);
 }
 
 #[test]
@@ -302,14 +305,46 @@ fn interpolation_allows_nested_strings_and_braces() {
 }
 
 #[test]
-fn escaped_quotes_inside_interpolation_do_not_close_the_string() {
-    // `\"` is a literal quote, so the interpolation runs to the real `}`.
-    let kinds = lex_kinds(r#""{f(\"a\")}""#);
+fn backslash_inside_interpolation_is_e0006() {
+    // A `\` in an interpolation is not an escape: nested strings are written
+    // raw (ADR 0008). `\"a\"` has two backslashes, so two errors, but the
+    // scanner still runs to the closing `}` and yields the expression part.
+    let (tokens, diagnostics) = lex_src(r#""{f(\"a\")}""#);
+    let spans: Vec<(u32, u32)> = diagnostics
+        .iter()
+        .filter(|d| d.code == "E0006")
+        .map(|d| (d.primary.start, d.primary.end))
+        .collect();
+    assert_eq!(spans, vec![(4, 5), (7, 8)], "got: {diagnostics:?}");
+    for diagnostic in diagnostics.iter().filter(|d| d.code == "E0006") {
+        let help = diagnostic.help.clone().unwrap_or_default();
+        assert!(
+            help.contains("without escaping"),
+            "help should show the raw form, got: {help:?}"
+        );
+    }
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
     assert_eq!(
         kinds,
         vec![str_parts(vec![StrPart::Expr {
             src: r#"f(\"a\")"#.to_owned(),
             span: crate::Span::new(FileId(0), 2, 10),
+        }])]
+    );
+}
+
+#[test]
+fn interpolation_with_a_raw_nested_string_is_valid() {
+    // The documented spelling for a nested string: no backslashes.
+    assert_eq!(
+        lex_kinds(r#""{f("a")}""#),
+        vec![str_parts(vec![StrPart::Expr {
+            src: r#"f("a")"#.to_owned(),
+            span: crate::Span::new(FileId(0), 2, 8),
         }])]
     );
 }
@@ -354,7 +389,8 @@ fn raw_newline_in_string_reports_e0002() {
 
 #[test]
 fn unterminated_string_does_not_stop_the_lexer() {
-    // Recovery: tokens after the broken string are still produced.
+    // Recovery: the broken string still yields a best-effort `Str` token, and
+    // scanning resumes afterwards (ADR 0008).
     let (tokens, diagnostics) = lex_src("\"abc\nfn main");
     assert_eq!(diagnostics.len(), 1);
     let kinds: Vec<TokenKind> = tokens
@@ -362,7 +398,15 @@ fn unterminated_string_does_not_stop_the_lexer() {
         .filter(|t| !t.is_eof())
         .map(|t| t.kind)
         .collect();
-    assert_eq!(kinds, vec![TokenKind::Kw(Keyword::Fn), ident("main")]);
+    assert_eq!(
+        kinds,
+        vec![
+            str_parts(vec![lit("abc")]),
+            TokenKind::Newline,
+            TokenKind::Kw(Keyword::Fn),
+            ident("main")
+        ]
+    );
 }
 
 #[test]
@@ -413,14 +457,24 @@ fn backslash_before_a_line_break_reports_e0004_on_the_backslash_only() {
 fn backslash_before_a_line_break_does_not_swallow_the_newline() {
     // The `\n` survives as trivia; scanning resumes on the next line and `b`
     // is lexed as an identifier, which would be impossible if the break had
-    // been consumed as part of an escape.
+    // been consumed as part of an escape. The broken string still emits a
+    // best-effort `Str` (ADR 0008).
     let (tokens, _) = lex_src("\"a\\\nb\"");
     let kinds: Vec<TokenKind> = tokens
         .into_iter()
         .filter(|t| !t.is_eof())
         .map(|t| t.kind)
         .collect();
-    assert_eq!(kinds, vec![ident("b")], "the line break was consumed");
+    assert_eq!(
+        kinds,
+        vec![
+            str_parts(vec![lit("a")]),
+            TokenKind::Newline,
+            ident("b"),
+            str_parts(vec![])
+        ],
+        "the line break was consumed"
+    );
 }
 
 #[test]
@@ -438,6 +492,52 @@ fn empty_interpolation_reports_e0006() {
 fn unclosed_interpolation_reports_e0002() {
     let codes = lex_errors(r#""{a""#);
     assert_eq!(codes.first(), Some(&"E0002"));
+}
+
+#[test]
+fn unclosed_interpolation_reports_a_single_e0002() {
+    // Decision D: one outermost diagnostic, not one per inner symptom.
+    let (tokens, diagnostics) = lex_src("\"{a\n");
+    let e0002: Vec<_> = diagnostics.iter().filter(|d| d.code == "E0002").collect();
+    assert_eq!(e0002.len(), 1, "got: {diagnostics:?}");
+    // The reported span starts at the `{` (byte 1).
+    assert_eq!(e0002[0].primary.start, 1);
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![str_parts(vec![]), TokenKind::Newline]);
+}
+
+#[test]
+fn error_tokens_are_best_effort() {
+    // Decision A: a malformed literal still contributes a token.
+    let (tokens, _) = lex_src("0x");
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![TokenKind::Int(0)]);
+
+    // A malformed float keeps its float-ness in the placeholder.
+    let (tokens, _) = lex_src("1.2e");
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![TokenKind::Float(0.0)]);
+
+    // A broken string keeps the parts read so far.
+    let (tokens, _) = lex_src("\"ab\\q\"");
+    let kinds: Vec<TokenKind> = tokens
+        .into_iter()
+        .filter(|t| !t.is_eof())
+        .map(|t| t.kind)
+        .collect();
+    assert_eq!(kinds, vec![str_parts(vec![lit("ab")])]);
 }
 
 // --- Operators and punctuation ---------------------------------------------
@@ -772,6 +872,50 @@ fn unmatched_closers_do_not_panic() {
     assert_eq!(
         lex_kinds(")\na"),
         vec![TokenKind::RParen, TokenKind::Newline, ident("a")]
+    );
+}
+
+#[test]
+fn a_closer_unwinds_mismatched_openers_above_its_match() {
+    // `f(1 }` closes the call from inside the block: the `}` matches the `{`
+    // that is *below* the `(` on the stack, so the `(` is wound down with it.
+    // The following Newline must therefore be emitted (ADR 0008).
+    assert_eq!(
+        lex_kinds("fn g() { f(1 }\nlet b = 2"),
+        vec![
+            TokenKind::Kw(Keyword::Fn),
+            ident("g"),
+            TokenKind::LParen,
+            TokenKind::RParen,
+            TokenKind::LBrace,
+            ident("f"),
+            TokenKind::LParen,
+            TokenKind::Int(1),
+            TokenKind::RBrace,
+            TokenKind::Newline,
+            TokenKind::Kw(Keyword::Let),
+            ident("b"),
+            TokenKind::Eq,
+            TokenKind::Int(2),
+        ]
+    );
+}
+
+#[test]
+fn a_closer_with_no_match_leaves_the_stack_alone() {
+    // `)` with no `(` on the stack must not pop the enclosing `{`, which keeps
+    // Newlines significant afterwards.
+    assert_eq!(
+        lex_kinds("{\n)\na\n}"),
+        vec![
+            TokenKind::LBrace,
+            TokenKind::Newline,
+            TokenKind::RParen,
+            TokenKind::Newline,
+            ident("a"),
+            TokenKind::Newline,
+            TokenKind::RBrace,
+        ]
     );
 }
 

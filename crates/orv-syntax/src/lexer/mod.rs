@@ -206,6 +206,9 @@ impl<'a> Lexer<'a> {
         self.push(kind, start, end);
     }
 
+    /// Scans a number, emitting a best-effort token even when it is malformed
+    /// (ADR 0008): `Int(0)` or `Float(0.0)`, so the stream still covers the
+    /// source and `orv tokens` shows the line.
     fn number(&mut self) {
         let start = self.cursor.pos();
         match number::scan_number(&mut self.cursor, self.file, &mut self.diagnostics) {
@@ -213,18 +216,25 @@ impl<'a> Lexer<'a> {
             NumberOutcome::Float(value) => {
                 self.push(TokenKind::Float(value), start, self.cursor.pos());
             }
-            // The diagnostic is already recorded; consume nothing more.
-            NumberOutcome::Invalid => {}
+            NumberOutcome::Invalid { looked_like_float } => {
+                let placeholder = if looked_like_float {
+                    TokenKind::Float(0.0)
+                } else {
+                    TokenKind::Int(0)
+                };
+                self.push(placeholder, start, self.cursor.pos());
+            }
         }
     }
 
+    /// Scans a string, emitting a best-effort `Str` token with the parts read
+    /// before the error (ADR 0008).
     fn string(&mut self) {
         let start = self.cursor.pos();
         match string::scan_string(&mut self.cursor, self.file, &mut self.diagnostics) {
-            StringOutcome::Parts(parts) => {
+            StringOutcome::Parts(parts) | StringOutcome::Invalid(parts) => {
                 self.push(TokenKind::Str(parts), start, self.cursor.pos());
             }
-            StringOutcome::Invalid => {}
         }
     }
 
