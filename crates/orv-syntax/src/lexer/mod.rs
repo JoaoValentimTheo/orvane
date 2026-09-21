@@ -17,6 +17,7 @@ mod string;
 #[cfg(test)]
 mod tests;
 mod token;
+mod trivia;
 
 pub use token::{Keyword, StrPart, Token, TokenKind};
 
@@ -60,15 +61,18 @@ pub fn lex(file: &SourceFile) -> (Vec<Token>, Vec<Diagnostic>) {
 }
 
 /// The lexer state machine.
+///
+/// Fields are `pub(super)` so the sibling modules (`trivia`, and the tests) can
+/// work with them without turning the lexer's internals into crate API.
 struct Lexer<'a> {
-    file: FileId,
-    cursor: Cursor<'a>,
-    tokens: Vec<Token>,
-    diagnostics: Vec<Diagnostic>,
-    delimiters: Vec<Delimiter>,
+    pub(super) file: FileId,
+    pub(super) cursor: Cursor<'a>,
+    pub(super) tokens: Vec<Token>,
+    pub(super) diagnostics: Vec<Diagnostic>,
+    pub(super) delimiters: Vec<Delimiter>,
     /// Whether a `Newline` token may be emitted at the current position.
     /// Cleared at the start of the file and after each emitted `Newline`.
-    pending_newline: bool,
+    pub(super) pending_newline: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -189,7 +193,7 @@ impl<'a> Lexer<'a> {
         }
         let end = self.cursor.pos();
         let text = self.cursor.text().get(start..end).unwrap_or("");
-        let kind = match Keyword::from_str(text) {
+        let kind = match Keyword::lookup(text) {
             Some(kw) => TokenKind::Kw(kw),
             // `py` and every other identifier arrive here (SPEC §5.1).
             None => TokenKind::Ident(text.to_owned()),
@@ -396,102 +400,6 @@ impl<'a> Lexer<'a> {
                 self.push(TokenKind::Question, start, self.cursor.pos());
             }
         }
-    }
-
-    // --- Comments -----------------------------------------------------------
-
-    /// `// ...` up to, but not including, the line break.
-    fn line_comment(&mut self) {
-        while let Some(b) = self.cursor.peek() {
-            if b == b'\n' || b == b'\r' {
-                break;
-            }
-            self.cursor.advance(1);
-        }
-    }
-
-    /// `/* ... */`, nestable. Returns `false` when the comment is unterminated
-    /// (an `E0003` is reported and file scanning stops).
-    ///
-    /// A block comment containing a line break counts as one `Newline`, like Go.
-    fn block_comment(&mut self) -> bool {
-        let open = self.cursor.pos();
-        self.cursor.advance(2);
-        let mut depth = 1usize;
-        let mut saw_newline = false;
-
-        while depth > 0 {
-            match self.cursor.peek() {
-                None => {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            "E0003",
-                            "unterminated block comment",
-                            Span::new(self.file, open as u32, self.cursor.pos() as u32),
-                        )
-                        .with_help("add a closing `*/`"),
-                    );
-                    return false;
-                }
-                Some(b'*') if self.cursor.peek_byte(1) == Some(b'/') => {
-                    self.cursor.advance(2);
-                    depth -= 1;
-                }
-                Some(b'/') if self.cursor.peek_byte(1) == Some(b'*') => {
-                    self.cursor.advance(2);
-                    depth += 1;
-                }
-                Some(b'\n') => {
-                    self.cursor.advance(1);
-                    saw_newline = true;
-                }
-                Some(b'\r') => {
-                    if self.cursor.peek_byte(1) == Some(b'\n') {
-                        self.cursor.advance(1);
-                    }
-                    self.cursor.advance(1);
-                    saw_newline = true;
-                }
-                Some(_) => self.cursor.advance(1),
-            }
-        }
-
-        if saw_newline {
-            self.note_newline();
-        }
-        true
-    }
-
-    // --- Newline handling ---------------------------------------------------
-
-    /// Records that a line break was seen. Emitted lazily so consecutive breaks
-    /// collapse into one.
-    fn note_newline(&mut self) {
-        self.pending_newline = true;
-    }
-
-    /// Emits the pending `Newline` unless the innermost delimiter suppresses it.
-    ///
-    /// A `Newline` is never emitted before the first real token, so leading
-    /// blank lines produce no token at all (§5.1).
-    fn flush_newline(&mut self) {
-        if !self.pending_newline {
-            return;
-        }
-        self.pending_newline = false;
-        if self.tokens.iter().all(|t| t.is_newline()) {
-            return;
-        }
-        let suppressed = self
-            .delimiters
-            .last()
-            .is_some_and(|d| d.suppresses_newline());
-        if suppressed {
-            return;
-        }
-        let pos = self.cursor.pos() as u32;
-        self.tokens
-            .push(Token::new(TokenKind::Newline, Span::point(self.file, pos)));
     }
 
     // --- Errors and emission -------------------------------------------------

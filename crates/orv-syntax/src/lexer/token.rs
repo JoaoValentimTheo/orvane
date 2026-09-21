@@ -181,7 +181,7 @@ impl Keyword {
     /// Looks a keyword up by identifier text.
     ///
     /// Returns `None` for `py`, which is contextual rather than reserved.
-    pub fn from_str(text: &str) -> Option<Keyword> {
+    pub fn lookup(text: &str) -> Option<Keyword> {
         let keyword = match text {
             "fn" => Keyword::Fn,
             "intent" => Keyword::Intent,
@@ -279,20 +279,20 @@ mod tests {
             "pub", "test",
         ];
         for text in spec {
-            let kw = Keyword::from_str(text).unwrap_or_else(|| panic!("missing keyword {text}"));
+            let kw = Keyword::lookup(text).unwrap_or_else(|| panic!("missing keyword {text}"));
             assert_eq!(kw.as_str(), text);
         }
     }
 
     #[test]
     fn py_is_not_a_reserved_keyword() {
-        assert_eq!(Keyword::from_str("py"), None);
+        assert_eq!(Keyword::lookup("py"), None);
     }
 
     #[test]
     fn keyword_lookup_rejects_identifiers() {
         for text in ["py", "main", "Fn", "FN", "lets", "if_", "none2", ""] {
-            assert_eq!(Keyword::from_str(text), None, "{text} must not be a keyword");
+            assert_eq!(Keyword::lookup(text), None, "{text} must not be a keyword");
         }
     }
 
