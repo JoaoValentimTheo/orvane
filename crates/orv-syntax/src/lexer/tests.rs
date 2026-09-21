@@ -766,6 +766,11 @@ proptest! {
             prop_assert!(start >= previous_end, "overlapping spans");
             prop_assert!(text.is_char_boundary(start as usize));
             prop_assert!(text.is_char_boundary(end as usize));
+            // ADR 0007: a `Newline` is a zero-width point, so it cannot cover
+            // bytes that belong to another token.
+            if token.is_newline() {
+                prop_assert_eq!(start, end, "Newline must be zero-width");
+            }
             previous_end = end;
         }
     }
