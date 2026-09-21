@@ -30,9 +30,8 @@ fn radix_prefixes_and_exponents_accept_uppercase() {
 #[test]
 fn i64_min_cannot_be_written_as_a_literal() {
     // `9223372036854775808` does not fit in `i64`, so `-9223372036854775808`
-    // lexes as `Minus` plus an `E0005`. Writing `i64::MIN` is a parser/sema
-    // concern (unary minus applied to an in-range literal is not enough),
-    // recorded in ADR 0007 for M2 to decide.
+    // lexes as `Minus` plus an `E0005`. ADR 0007 §6.2 chose option 2: there is
+    // no literal for `i64::MIN`, and the program writes `(-9223372036854775807) - 1`.
     let (tokens, diagnostics) = lex_src("-9223372036854775808");
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].code, "E0005");
@@ -45,6 +44,24 @@ fn i64_min_cannot_be_written_as_a_literal() {
         kinds,
         vec![TokenKind::Minus, TokenKind::Int(0)],
         "best-effort tokens: minus plus the Int placeholder"
+    );
+}
+
+#[test]
+fn the_overflowing_magnitude_is_not_recoverable_from_tokens() {
+    // This is *why* ADR 0007 §6.2 rejected folding `Minus` into the literal:
+    // the reject path keeps no trace of `9223372036854775808`, so no later
+    // phase could reconstruct `i64::MIN`. Pinning it prevents someone from
+    // "fixing" the missing literal by reading the source back.
+    let (tokens, _) = lex_src("-9223372036854775808");
+    let rendered: Vec<String> = tokens
+        .iter()
+        .map(|t| crate::dump::kind_text(&t.kind))
+        .collect();
+    assert_eq!(rendered, vec!["Minus", "Int(0)", "Eof"]);
+    assert!(
+        !rendered.iter().any(|k| k.contains("9223372036854775808")),
+        "the magnitude must not survive anywhere in the token stream"
     );
 }
 

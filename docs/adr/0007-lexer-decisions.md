@@ -82,11 +82,17 @@ carrega a **magnitude**. Como `9223372036854775808` não cabe em `i64`, o menor
 inteiro representável, `-9223372036854775808`, **não tem forma literal** —
 `-9223372036854775808` produz `Minus` + `E0005` (com `Int(0)` de melhor esforço).
 
-Escrever `i64::MIN` é, portanto, decisão do **M2**: ou sema dobra `Minus`
-aplicado a um literal na constante (tratando o par como um caso especial), ou o
-programa precisa de outra expressão (`(-9223372036854775807) - 1`). Nada no
-lexer muda em nenhum dos casos; o registro fica aqui para o M2 não redescobrir
-isso como bug.
+**Decisão (M2): opção 2 — não existe literal para `i64::MIN`.** Quem precisar do
+valor escreve `(-9223372036854775807) - 1`, que é avaliado em runtime. A opção 1
+(dobrar `Minus` + literal na constante durante a análise) foi rejeitada por ser
+**inviável, não apenas inconveniente**: ao reportar `E0005` o lexer descarta a
+magnitude — o token de melhor esforço é `Int(0)`, e o texto do literal não
+sobrevive em nenhum campo do `Token`. Não há como a sema recuperar
+`9223372036854775808` a partir da stream, então não existe caso especial a
+implementar.
+
+Nada no lexer muda. O registro fica aqui para o M2 não tratar a ausência de
+literal como bug nem "consertar" o `E0005`.
 
 ### 7. Recuperação de erro
 
