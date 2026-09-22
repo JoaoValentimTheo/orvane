@@ -672,6 +672,17 @@ impl Checker {
                 let mut value_ty: Option<Ty> = None;
                 for (key, value) in entries {
                     let found_key = self.check_expr(key);
+                    // §5.3: `Map<K, V>` with `K ∈ {Int, Str, Bool}`. Any other
+                    // key type has no runtime representation (`MapKey`), so the
+                    // sema must reject it here instead of letting the runtime
+                    // fail with R0010 (sema↔runtime divergence).
+                    if !self.is_valid_map_key(&found_key) {
+                        self.error(
+                            "E0301",
+                            format!("map keys must be `Int`, `Str` or `Bool`, found `{found_key}`"),
+                            key.span,
+                        );
+                    }
                     let found_value = self.check_expr(value);
                     key_ty = Some(match key_ty {
                         None => found_key,
@@ -1365,6 +1376,14 @@ impl Checker {
                 span,
             );
         }
+    }
+
+    /// Whether `ty` can be a `Map` key (§5.3: `K ∈ {Int, Str, Bool}`).
+    ///
+    /// `Unknown` is allowed so a single error does not cascade into a second,
+    /// misleading map-key diagnostic.
+    fn is_valid_map_key(&self, ty: &Ty) -> bool {
+        matches!(ty, Ty::Int | Ty::Str | Ty::Bool) || ty.is_unknown()
     }
 
     /// Resolves a user type name against the declarations.
