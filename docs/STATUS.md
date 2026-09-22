@@ -8,6 +8,22 @@
 Regra (§0.2 item 4 / §11 item 6): uma feature só é **Implemented** se houver
 teste golden que a exercita. Sem teste → `Planned`.
 
+## Estabilização 0.1.0 (`fix/0.1.0-stabilization`)
+
+| Correção | Teste de regressão | ADR |
+|---|---|---|
+| Variante sem payload construía no `check` mas não no `run` (R0010) | `runs_a_unit_only_enum`, `runs_unit_variants_as_values_and_in_collections` | 0017 |
+| Variante com payload não tinha valor de construtor no runtime | `a_payload_variant_is_a_first_class_constructor`, `a_constructor_can_be_passed_to_a_higher_order_function` | 0017 |
+| Tipo de usuário aninhado (`fn(..) -> E`, `List<E>`, `Map<_, E>`) ficava como `Data` e acusava `expected E, found E` | `an_enum_type_nested_in_a_fn_type_resolves`, `an_enum_type_nested_in_a_list_and_optional_resolves`, `an_enum_in_a_map_value_resolves` | — |
+| `main` conta como 1 dos 48 frames; fronteira agora fixada | `the_call_depth_boundary_is_exact` | 0016 |
+| Profundidade era `R0010`; agora é `R0004` como §12 diz | `infinite_recursion_is_a_failure_not_a_crash` | — |
+| Bloco não fechado era `E0102`; agora é `E0103` | `an_unclosed_function_body_reports_e0103`, `an_unclosed_data_body_reports_e0103`, `an_unclosed_enum_body_reports_e0103`, `an_unclosed_match_body_reports_e0103`, golden `check_unclosed_block` | — |
+| Atribuição a campo passava no `check` e falhava no `run`; agora é `E0231` | `assigning_to_a_field_is_rejected_as_out_of_scope`, `assigning_to_an_optional_field_is_rejected` | 0018 |
+| Concordância sema↔runtime como invariante testada | `sema_runtime_agreement.rs` (4 proptests dirigidos) | — |
+
+Matriz de cobertura completa de §4.1/§4.2/§A: [`docs/coverage-matrix.md`](coverage-matrix.md).
+Os 27 programas da matriz são goldens (`tests/golden/matrix_*.orv`).
+
 ## Milestones
 
 | Milestone | Escopo | Status | Gate |

@@ -1,0 +1,22 @@
+// orv: run %f
+data User {
+    name: Str,
+    age: Int,
+    email: Str? = none,
+}
+
+data Point {
+    x: Int,
+    y: Int,
+}
+
+fn main() {
+    let u = User(name: "Mel", age: 30)
+    print(u)
+    print(u == User("Mel", 30))
+    let p = Point(1, 2)
+    print(p)
+    print(p.x + p.y)
+    let named = User("Sam", 25, "s@e.com")
+    print(named)
+}

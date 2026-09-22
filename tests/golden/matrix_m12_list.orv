@@ -1,0 +1,12 @@
+// orv: run %f
+fn main() {
+    let xs = [1, 2, 3]
+    let empty = []
+    print(len(xs))
+    print(xs[0])
+    print(xs[-1])
+    print([1, 2] == [1, 2])
+    let mut ys = [1]
+    ys[0] = 9
+    print(ys[0])
+}

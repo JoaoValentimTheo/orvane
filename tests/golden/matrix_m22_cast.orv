@@ -1,0 +1,7 @@
+// orv: run %f
+fn main() {
+    let f = 1 as Float
+    print(f)
+    let g = 2.9 as Float
+    print(g)
+}

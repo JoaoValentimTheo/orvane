@@ -1,0 +1,7 @@
+// orv: run %f
+enum Shape { Circle(Float) }
+
+fn main() {
+    let ctor = Circle
+    print(ctor(2.0))
+}

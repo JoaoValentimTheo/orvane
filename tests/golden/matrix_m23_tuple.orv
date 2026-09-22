@@ -1,0 +1,6 @@
+// orv: run %f
+fn main() {
+    let t = (1, "a")
+    print(t)
+    print((1, 2) == (1, 2))
+}

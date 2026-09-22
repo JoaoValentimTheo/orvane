@@ -1,0 +1,5 @@
+User(name: "Mel", age: 30, email: none)
+true
+Point(x: 1, y: 2)
+3
+User(name: "Sam", age: 25, email: "s@e.com")

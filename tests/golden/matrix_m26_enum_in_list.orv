@@ -1,0 +1,14 @@
+// orv: run %f
+enum Flag { On, Off }
+
+fn main() {
+    let flags = [On, Off, On]
+    print(len(flags))
+    print(flags[0] == On)
+    for f in flags {
+        match f {
+            On => print("on"),
+            Off => print("off"),
+        }
+    }
+}
