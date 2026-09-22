@@ -17,6 +17,9 @@
 8. **Nunca reescreva arquivos inteiros** sem necessidade; edite cirurgicamente. Nunca apague testes para fazê-los passar.
 9. Ao terminar: liste (a) o que foi feito, (b) o que ficou de fora, (c) decisões tomadas (ADRs), (d) próximo milestone.
 10. Se um teste do milestone anterior quebrar, **conserte antes de continuar**.
+11. **Merge em `main` é sempre humano.** Você pode abrir PR contra `main` a qualquer momento com gate verde, mas nunca clica merge nela — a proteção de branch (§3.5, adicionar referência) impede isso tecnicamente também, mas a regra vale independente da proteção estar ativa no momento. Merge em branches de integração/rascunho que não sejam `main` (ex.: `fix-0.1.1`, branches de milestone) continua permitido com gate 100% verde, sem precisar de autorização por item, exceto onde um prompt disser o contrário.
+12. **STOP CONDITION é regra permanente, não algo a repetir por prompt.** Quando uma auditoria ou varredura encontrar mais bugs da mesma classe do que o limite combinado na tarefa (ou, na ausência de limite explícito, mais de 3), pare de corrigir, escreva o relatório do que já foi encontrado e aguarde decisão — mesmo que a correção pareça pequena. "Documentar como pendência e mesclar assim mesmo" não satisfaz esta regra.
+13. **Todo relatório final deve ser verificável, não só afirmado.** Qualquer frase do tipo "não mesclei em main", "gate verde" ou "N testes passam" vem acompanhada do comando literal usado para confirmar (ex.: `git merge-base --is-ancestor <branch> origin/main`, a saída de `cargo test`, o link do run de CI) — não a alegação sozinha.
 
 ## 3. Restrições técnicas
 
@@ -76,3 +79,19 @@ orvane/
 - Erros de usuário sempre `Diagnostic { code, message, span, labels, help }` (§8). Nunca `String` solta.
 - Determinismo: nenhuma iteração de `HashMap` afeta saída visível (use `IndexMap`-like via `Vec` ou ordene). Proibido depender de ordem de hash.
 - Testes de unidade ao lado do código; testes de ponta a ponta em `tests/golden`.
+
+### 3.5 Proteção do branch `main`
+`main` exige, de forma **não contornável por administradores**
+(`enforce_admins = true`, o ponto mais importante — sem ele, uma conta com
+direitos de admin mescla direto e a proteção vira teatro):
+
+- Pull Request obrigatório antes de merge;
+- no mínimo **1 aprovação** (`required_approving_review_count = 1`);
+- revisões antigas descartadas quando novos commits chegam
+  (`dismiss_stale_reviews = true`);
+- os checks de `.github/workflows/ci.yml` verdes antes do merge, com os nomes
+  exatos dos jobs: `rustfmt`, `clippy + test (ubuntu-latest)`,
+  `clippy + test (windows-latest)`.
+
+Isso materializa §0.2 item 11 (merge em `main` é sempre humano). A regra vale
+mesmo que a proteção seja desligada temporariamente.
