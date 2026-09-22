@@ -16,6 +16,11 @@ pub enum Severity {
 }
 
 impl Severity {
+    /// Whether this severity blocks the pipeline (ADR 0008 amend, rule 5).
+    pub const fn is_error(self) -> bool {
+        matches!(self, Severity::Error)
+    }
+
     /// Stable lowercase name, used in golden `.err` output.
     pub const fn as_str(self) -> &'static str {
         match self {

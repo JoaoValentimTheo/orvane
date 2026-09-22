@@ -97,13 +97,30 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 
 | Código | Mensagem | Exemplo mínimo | Status |
 |---|---|---|---|
-| `E0301` | tipos incompatíveis | `let x: Int = "s"` | M3 |
-| `E0302` | aridade incorreta | `f(1, 2)` com `f(a: Int)` | M3 |
+| `E0301` | tipos incompatíveis | `let x: Int = "s"` · `"a" - "b"` | **M3** (alpha) |
+| `E0302` | aridade incorreta | `f(1, 2)` com `f(a: Int)` · variant com nº errado de campos | **M3** (alpha) |
+| `E0303` | não é chamável/iterável/indexável | `let x = 1` + `x()` · `x[0]` | **M3** (alpha) |
+| `E0304` | campo inexistente | `u.age` onde `data User { name: Str }` | **M3** (alpha) |
 | `E0305` | opcional não tratado | `let a: Int = opt_int` | M5 |
-| `E0310` | lambda sem contexto de tipo | `let f = x => x` | M3 |
-| `E0311` | cast inválido | `"s" as Int` | M3 |
-| `E0312` | truthiness não existe | `if py_value {}` | M7 |
+| `E0310` | lambda sem contexto de tipo | `let f = x => x` | **M3** (alpha) |
+| `E0311` | cast inválido | `"s" as Int` | **M3** (alpha) |
+| `E0312` | truthiness não existe | `if 1 {}` · `while "x" {}` | **M3** (alpha) |
+| `E0313` | `fail` usado onde não é suportado | `fail "x"` como expressão | **M3** (alpha) |
 | `E0320` | `match` não exaustivo | `match b { true => 1 }` | M5 |
+| `E0321` | variante inexistente | padrão de variante de outro enum | **M3** (alpha) |
+
+Notas de comportamento (M3, ADR 0012):
+
+- **Um erro por causa.** Uma sub-expressão que falha vira o tipo `?` (Unknown),
+  compatível com tudo, então `nope + 1 + 2` reporta **um** `E0201`, não três
+  erros de tipo.
+- `E0312` implementa §5.3 ("Truthiness: inexistente"): `if`/`while` exigem `Bool`.
+- `E0311` só permite `Int as Float` (e o cast para o mesmo tipo); `Py as T` é do
+  M7 e está fora do alpha.
+- `E0321` vale quando o nome **é** uma variante declarada e o scrutinee não é
+  aquele enum. Um nome de variante **escrito errado** liga em vez de errar —
+  consequência inevitável de §5.2, registrada no ADR 0015.
+- `E0201` cobre também tipo indefinido numa anotação (`x: Missing`).
 
 ## E04xx — intents
 

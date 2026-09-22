@@ -13,7 +13,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
 | M1.2 | últimos ajustes: teste de stdout determinístico, paridade LF/CRLF com `\`, `E0006` por interpolação, float fora de faixa, docs, testes divididos | **Implemented** | mesmo gate; 17 goldens `tokens_*` |
 | M2 | parser + `orv ast` | **Implemented (alpha)** | §4.1, §4.2 e §A1–A2 parseiam; `orv ast` dumpa AST estável |
-| M3 | sema v1 (nomes e tipos) | Planned | `orv check` |
+| M3 | sema: nomes e tipos do recorte | **Implemented (alpha)** | `orv check` aceita válidos e rejeita cada caso com o código certo |
 | M4 | interpretador v1 | Planned | `orv run examples/fib.orv` |
 | M5 | `data`/`enum`/`match` | Planned | §4.2 roda; `match` não exaustivo rejeitado |
 | M6 | intents/strategies/planner | Planned | 12 casos de `tests/golden/intents/` |
@@ -44,6 +44,24 @@ teste golden que a exercita. Sem teste → `Planned`.
 | `AGENTS.md`, `docs/errors.md`, `docs/adr/` | revisão; ADRs 0001–0010 |
 | Licenças MIT **ou** Apache-2.0 | `LICENSE-MIT`, `LICENSE-APACHE`, `license.workspace` |
 | README mínimo com status honesto | `README.md` (status gerado de `docs/STATUS.md`) |
+
+## Features do M3 (sema)
+
+| Feature | Teste que a exercita |
+|---|---|
+| Resolução de nomes com escopos, shadowing e prelude (§5.6) | `accepts_nested_blocks_and_shadowing`, `shadowing_in_an_inner_scope_is_allowed`, `calls_can_refer_to_later_functions`; `scopes::tests::*` |
+| Inferência local (`let x = 1`) e anotação explícita | `accepts_arithmetic_with_inference`, `accepts_annotated_let` |
+| Primitivos, `List`, `Map`, tuplas, opcionais, `Result` | `ty::tests::*`, `accepts_lists_and_indexing`, `accepts_maps`, `accepts_optional_coalesce` |
+| Aritmética com promoção `Int`→`Float` e concatenação de `Str` | `accepts_int_float_promotion`, `accepts_string_concatenation`, `numeric_result` |
+| `data`/`enum`: campos, variantes, construção posicional/nomeada | `accepts_data_construction`, `accepts_enum_and_match`, `duplicate_field_reports_e0202` |
+| `match` com patterns, guarda e tipos de arm unificados | `accepts_enum_and_match`, `match_arm_type_mismatch_reports_e0301`, `variant_pattern_field_count_reports_e0302` |
+| `E0201` nome/tipo indefinido | `undefined_name_reports_e0201`, `undefined_type_reports_e0201` |
+| `E0202` definição duplicada | `duplicate_definition_reports_e0202`, `duplicate_parameter_reports_e0202` |
+| `E0230` atribuição a imutável | `assigning_to_an_immutable_reports_e0230`, `assigning_to_a_field_of_an_immutable_is_allowed` |
+| `E0301`–`E0313`, `E0321` (tabela em `docs/errors.md`) | um teste por código |
+| **Sem cascata**: um erro por causa (`Ty::Unknown` compatível) | `one_undefined_name_yields_one_diagnostic`, `a_mistake_in_a_condition_does_not_cascade_into_the_body` |
+| proptest: sema nunca dá panic para AST arbitrária | `sema_never_panics`, `sema_never_panics_on_fragments` |
+| `orv check` (exit 1 com diagnóstico, 0 sem) | goldens `check_ok`, `check_errors` |
 
 ## Fundações do M2 (parser)
 
