@@ -1,0 +1,13 @@
+4:1 Ident(a)
+5:1 Newline
+5:1 Ident(b)
+5:11 Ident(c)
+6:1 Newline
+6:1 Ident(d)
+7:14 Newline
+7:14 Ident(e)
+8:1 Newline
+8:1 Ident(f)
+8:36 Ident(g)
+9:1 Newline
+9:1 Eof

@@ -1,0 +1,21 @@
+[package]
+name = "orv-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Development-only tools: the byte-level fuzz harness (not published)."
+publish = false
+
+[[bin]]
+name = "fuzz-bytes"
+path = "src/bin/fuzz_bytes.rs"
+
+[dependencies]
+orv-runtime.workspace = true
+orv-sema.workspace = true
+orv-syntax.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

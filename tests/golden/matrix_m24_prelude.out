@@ -1,0 +1,7 @@
+42
+7
+3.0
+3
+2
+Ok(1)
+Err(Failure(kind: "Unsupported", message: "bad"))

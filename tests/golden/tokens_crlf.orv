@@ -1,0 +1,5 @@
+// orv: tokens %f
+// Newlines CRLF (\r\n): cada quebra vira UM Newline, e o arquivo é uma
+// quebra entre tokens. Os bytes CRLF são versionados literalmente.
+let a = 1
+let b = 2

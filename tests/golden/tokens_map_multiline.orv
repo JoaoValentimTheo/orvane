@@ -1,0 +1,8 @@
+// orv: tokens %f
+// M1 obrigatório: literal `#{ }` multilinha. `Newline` é suprimido dentro de
+// `#{`, e emitido após o `}` de fechamento.
+let m = #{
+    "a": 1,
+    "b": 2,
+}
+print(m)

@@ -1,0 +1,8 @@
+// orv: run %f
+fn main() {
+    print("a" + "b")
+    print("tab\there")
+    print("new\nline")
+    print("quote\"inside")
+    print("brace\{literal\}")
+}

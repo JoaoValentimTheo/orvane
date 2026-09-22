@@ -1,0 +1,5 @@
+// orv: tokens %f
+// exit: 1
+// E0006: `\` dentro de uma interpolação não é escape; strings aninhadas são
+// cruas — `{f("a")}`. O scanner continua até o `}` final.
+let a = "{f(\"a\")}"

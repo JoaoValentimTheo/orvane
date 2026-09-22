@@ -1,0 +1,5 @@
+// orv: tokens %f
+// exit: 1
+// E0005: literal de float fora da faixa de f64 (`1e309`/`1e999` estouram).
+let big = 1e999
+let huge = 1.0e309

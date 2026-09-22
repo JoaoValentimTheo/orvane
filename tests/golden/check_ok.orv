@@ -1,0 +1,25 @@
+// orv: check %f
+// Um programa válido do recorte do alpha: funções, coleções, controle de fluxo.
+data Point {
+    x: Int,
+    y: Int,
+}
+
+fn distance_squared(a: Point, b: Point) -> Int {
+    let dx = a.x - b.x
+    let dy = a.y - b.y
+    dx * dx + dy * dy
+}
+
+fn main() {
+    let xs = [1, 2, 3]
+    let m = #{"a": 1, "b": 2}
+    let mut total = 0
+    for x in xs {
+        total += x
+    }
+    let label = if total > 5 { "big" } else { "small" }
+    print(label)
+    print(distance_squared(Point(x: 0, y: 0), Point(x: 3, y: 4)))
+    print(m["a"])
+}

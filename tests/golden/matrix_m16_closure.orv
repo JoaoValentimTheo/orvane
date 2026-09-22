@@ -1,0 +1,7 @@
+// orv: run %f
+fn main() {
+    let mut count = 0
+    let read: fn(Int) -> Int = n => count + n
+    count = 10
+    print(read(1))
+}

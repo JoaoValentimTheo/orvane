@@ -1,0 +1,6 @@
+// orv: no-such-subcommand
+// exit: 2
+// Prova que o cabeçalho `// exit: N` é exercitado de ponta a ponta: um
+// subcomando desconhecido deve sair com código 2 (erro de uso, SPEC §10) e não
+// produzir diagnósticos nem stdout. Sem `.out` e sem `.err`, o harness exige
+// exatamente isso.

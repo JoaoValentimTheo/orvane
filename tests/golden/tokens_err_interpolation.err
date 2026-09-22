@@ -1,0 +1,2 @@
+E0006:4:11: invalid interpolation: `}` without a matching `{`
+E0006:5:10: invalid interpolation: empty expression

@@ -1,0 +1,4 @@
+// O menor programa possível: §4.1 do SPEC.
+fn main() {
+    print("Olá, Orvane!")
+}

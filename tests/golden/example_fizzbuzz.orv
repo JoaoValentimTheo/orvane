@@ -1,0 +1,12 @@
+// orv: run %f
+// Exemplo: examples/fizzbuzz.orv
+// §A1: for, range inclusivo e if/else if encadeado.
+fn main() {
+    for i in 1..=15 {
+        let out = if i % 15 == 0 { "FizzBuzz" }
+                  else if i % 3 == 0 { "Fizz" }
+                  else if i % 5 == 0 { "Buzz" }
+                  else { str(i) }
+        print(out)
+    }
+}

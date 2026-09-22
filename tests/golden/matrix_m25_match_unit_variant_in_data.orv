@@ -1,0 +1,16 @@
+// orv: run %f
+enum Status { Active, Done }
+
+data Task {
+    title: Str,
+    status: Status,
+}
+
+fn main() {
+    let t = Task(title: "ship", status: Active)
+    print(t)
+    match t.status {
+        Active => print("active"),
+        Done => print("done"),
+    }
+}

@@ -1,0 +1,18 @@
+// orv: run %f
+fn add(a: Int, b: Int) -> Int {
+    a + b
+}
+
+fn no_ret(x: Int) {
+    print(x)
+}
+
+fn early(x: Int) -> Int {
+    return x * 2
+}
+
+fn main() {
+    print(add(1, 2))
+    no_ret(5)
+    print(early(3))
+}

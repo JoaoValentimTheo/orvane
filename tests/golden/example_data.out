@@ -1,0 +1,4 @@
+User(name: "Mel", age: 30, email: none)
+User(name: "Sam", age: 25, email: "sam@example.com")
+true
+false

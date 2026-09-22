@@ -1,0 +1,5 @@
+// orv: tokens %f
+// exit: 1
+// E0003: comentário de bloco não fechado.
+let x = 1
+/* nunca fecha

@@ -1,0 +1,14 @@
+// orv: run %f
+fn classify(n: Int) -> Str {
+    match n {
+        0 => "zero",
+        x if x > 100 => "big",
+        _ => "small",
+    }
+}
+
+fn main() {
+    print(classify(0))
+    print(classify(500))
+    print(classify(5))
+}

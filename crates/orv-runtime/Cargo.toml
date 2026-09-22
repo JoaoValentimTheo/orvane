@@ -8,3 +8,8 @@ repository.workspace = true
 description = "Orvane crate orv-runtime."
 
 [dependencies]
+orv-syntax.workspace = true
+orv-sema.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

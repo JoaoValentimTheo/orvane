@@ -1,0 +1,11 @@
+// orv: run %f
+fn main() {
+    let x: Int = 1
+    let f: Float = 2.0
+    let s: Str = "a"
+    let b: Bool = false
+    print(x)
+    print(f)
+    print(s)
+    print(b)
+}

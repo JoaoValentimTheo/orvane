@@ -1,0 +1,16 @@
+// orv: run %f
+// Exemplo: examples/fib.orv
+// Recursão e funções.
+fn fib(n: Int) -> Int {
+    if n < 2 {
+        n
+    } else {
+        fib(n - 1) + fib(n - 2)
+    }
+}
+
+fn main() {
+    for i in range(0, 11) {
+        print(fib(i))
+    }
+}

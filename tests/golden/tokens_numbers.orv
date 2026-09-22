@@ -1,0 +1,4 @@
+// orv: tokens %f
+// Int, Float, hex, binary and separator forms; `1..5` and `1.foo` show the
+// "dot only starts a fraction before a digit" rule.
+123 1_000 0xFF 0b1010 1.5 2e10 1_0.5 9223372036854775807 1..5 1.foo 1.2

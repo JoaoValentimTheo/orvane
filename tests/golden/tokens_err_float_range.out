@@ -1,0 +1,11 @@
+4:1 Kw(let)
+4:5 Ident(big)
+4:9 Eq
+4:11 Float(0.0)
+5:1 Newline
+5:1 Kw(let)
+5:5 Ident(huge)
+5:10 Eq
+5:12 Float(0.0)
+6:1 Newline
+6:1 Eof

@@ -1,0 +1,18 @@
+// orv: run %f
+// Exemplo: examples/data.orv
+// §4.2: data com construtor nomeado, defaults, Display e igualdade estrutural.
+data User {
+    name: Str,
+    age: Int,
+    email: Str? = none,
+}
+
+fn main() {
+    let mel = User(name: "Mel", age: 30)
+    let sam = User(name: "Sam", age: 25, email: "sam@example.com")
+
+    print(mel)
+    print(sam)
+    print(mel == User("Mel", 30))
+    print(mel == sam)
+}

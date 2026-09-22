@@ -1,0 +1,19 @@
+Enum Shape
+  Variant Circle(Float)
+  Variant Rect(Float, Float)
+Fn area
+  Param s: Shape
+  ret Float
+  Block
+    Match
+      Ident s
+      Arm Circle(r)
+        Binary *
+          Binary *
+            Literal Float(3.14159)
+            Ident r
+          Ident r
+      Arm Rect(w, h)
+        Binary *
+          Ident w
+          Ident h

@@ -1,0 +1,7 @@
+// orv: run %f
+fn main() {
+    let maybe: Int? = none
+    print(maybe ?? 7)
+    let some: Int? = 3
+    print(some ?? 7)
+}

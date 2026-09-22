@@ -12,5 +12,4 @@ ariadne.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-insta.workspace = true
 proptest.workspace = true
