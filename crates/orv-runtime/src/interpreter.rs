@@ -266,7 +266,7 @@ impl Interpreter {
             ExprKind::Lambda { params, body } => Ok(Value::Function(Rc::new(Closure::lambda(
                 params.clone(),
                 Rc::new(body.as_ref().clone()),
-                self.env.clone(),
+                self.env.snapshot(),
                 expr.span,
             )))),
         }
@@ -736,10 +736,12 @@ impl Interpreter {
     /// The environment a call starts from.
     ///
     /// A named function or builtin is top-level and sees the global scope; a
-    /// lambda sees the scope it captured when the value was created.
+    /// lambda sees the scope it captured when the value was created. The
+    /// captured chain is snapshotted per call so pushing the call's own frame
+    /// (parameters) cannot leak into the closure value or another call.
     fn call_env(&self, function: &Rc<Closure>) -> Env {
         match &function.callable {
-            crate::function::Callable::Lambda { captured, .. } => captured.clone(),
+            crate::function::Callable::Lambda { captured, .. } => captured.snapshot(),
             crate::function::Callable::Named(_)
             | crate::function::Callable::Builtin
             | crate::function::Callable::Constructor { .. } => self.global.clone(),

@@ -145,6 +145,54 @@ fn main() {
 }
 
 #[test]
+fn a_returned_lambda_keeps_its_captured_parameters() {
+    // The `adder` frame (holding `n`) is popped before the returned lambda is
+    // called, so the closure must keep the scope it captured. Regression for
+    // `R0010: undefined name n` (sema accepted, runtime did not).
+    let source = "\
+fn adder(n: Int) -> fn(Int) -> Int {
+    let f: fn(Int) -> Int = (x) => x + n
+    return f
+}
+
+fn main() {
+    print(adder(10)(5))
+}
+";
+    assert_eq!(run(source), "15\n");
+}
+
+#[test]
+fn a_nested_lambda_closes_over_the_outer_lambda_parameter() {
+    // The inner lambda captures `a`, a parameter of the outer lambda frame.
+    let source = "\
+fn main() {
+    let f: fn(Int) -> fn(Int) -> Int = a => (b) => a + b
+    print(f(1)(2))
+}
+";
+    assert_eq!(run(source), "3\n");
+}
+
+#[test]
+fn a_lambda_returned_from_a_function_still_sees_later_outer_mutation() {
+    // Capture is by reference for `let mut`, even across a returning frame.
+    let source = "\
+fn make() -> fn() -> Int {
+    let mut n = 1
+    let read: fn() -> Int = () => n
+    n = 7
+    return read
+}
+
+fn main() {
+    print(make()())
+}
+";
+    assert_eq!(run(source), "7\n");
+}
+
+#[test]
 fn runs_a_lambda_passed_to_a_function() {
     let source = "\
 fn apply(f: fn(Int) -> Int, x: Int) -> Int {
