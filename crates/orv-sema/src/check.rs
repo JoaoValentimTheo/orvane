@@ -69,6 +69,13 @@ pub struct Checker {
     functions: HashMap<String, Ty>,
     /// User-declared `data`/`enum` types.
     user_types: HashMap<String, UserType>,
+    /// Every declared variant name, mapped to its owning enum.
+    ///
+    /// Variant names are resolved globally (ADR 0015), so a name declared by
+    /// two enums would be ambiguous and both the sema's `find_variant` and the
+    /// runtime's variant table would have to guess. A collision is `E0202`
+    /// (ADR 0020).
+    variant_names: HashMap<String, String>,
     /// Where each declared name was defined, for `E0202`.
     declarations: Vec<(String, orv_syntax::Span)>,
     /// The function whose body is being checked, for `return` typing.
@@ -94,6 +101,7 @@ impl Checker {
             scopes: Scopes::new(),
             functions: HashMap::new(),
             user_types: HashMap::new(),
+            variant_names: HashMap::new(),
             declarations: Vec::new(),
             current_return: None,
             expected: None,
@@ -253,6 +261,23 @@ impl Checker {
                 );
                 continue;
             }
+            // Variant names are resolved globally (ADR 0015), so two enums may
+            // not declare the same name: the sema and the runtime would pick
+            // different owners (ADR 0020).
+            if let Some(owner) = self.variant_names.get(&variant.name) {
+                self.error(
+                    "E0202",
+                    format!(
+                        "variant `{}` is already declared in `{owner}`; \
+                         variant names must be unique across enums",
+                        variant.name
+                    ),
+                    variant.span,
+                );
+                continue;
+            }
+            self.variant_names
+                .insert(variant.name.clone(), decl.name.clone());
             variants.push(EnumVariant {
                 name: variant.name.clone(),
                 payload,
