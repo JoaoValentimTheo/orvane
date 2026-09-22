@@ -1,0 +1,6 @@
+// orv: check %f
+// exit: 1
+// E0103: bloco não fechado. O span aponta o `{` de abertura, não o fim do
+// arquivo, porque a causa é a chave que faltou.
+fn main() {
+    let x = 1
