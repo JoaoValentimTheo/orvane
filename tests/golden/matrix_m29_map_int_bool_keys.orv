@@ -1,0 +1,7 @@
+// orv: run %f
+fn main() {
+    let m = #{1: "a", 2: "b"}
+    print(m[1])
+    let b = #{true: 1, false: 0}
+    print(b[true])
+}

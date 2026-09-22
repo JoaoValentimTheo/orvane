@@ -267,6 +267,30 @@ fn adding_a_string_and_an_int_reports_e0301() {
 }
 
 #[test]
+fn a_map_key_that_is_not_int_str_or_bool_reports_e0301() {
+    // §5.3: `Map<K, V>` with `K ∈ {Int, Str, Bool}`. An enum key has no
+    // runtime representation, so the sema must reject it (the runtime would
+    // otherwise fail with R0010 — the sema↔runtime divergence this guards).
+    assert_eq!(
+        codes("enum E { A }\nfn main() {\n    let m = #{A: 1}\n}\n"),
+        vec!["E0301"]
+    );
+}
+
+#[test]
+fn a_float_map_key_reports_e0301() {
+    assert_eq!(
+        codes("fn main() {\n    let m = #{1.5: 1}\n}\n"),
+        vec!["E0301"]
+    );
+}
+
+#[test]
+fn int_str_and_bool_map_keys_are_accepted() {
+    ok_main("let a = #{1: 1}\nlet b = #{\"k\": 1}\nlet c = #{true: 1}");
+}
+
+#[test]
 fn wrong_argument_count_reports_e0302() {
     assert_eq!(
         codes("fn f(a: Int) {\n}\n\nfn main() {\n    f(1, 2)\n}\n"),
