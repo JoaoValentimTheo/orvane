@@ -328,6 +328,97 @@ fn main() {
 }
 
 #[test]
+fn runs_a_unit_only_enum() {
+    // Regression: the checker resolves `Active` (a unit variant) to the enum
+    // type, so the runtime must be able to build it too. Before the fix this
+    // failed with R0010 "undefined name `Active`" even though `orv check`
+    // returned 0.
+    let source = "\
+enum Status { Active, Done }
+
+fn main() {
+    let s = Active
+    match s {
+        Active => print(\"a\"),
+        Done => print(\"d\"),
+    }
+}
+";
+    assert_eq!(run(source), "a\n");
+}
+
+#[test]
+fn runs_unit_variants_as_values_and_in_collections() {
+    let source = "\
+enum Status { Active, Done }
+
+fn label(s: Status) -> Str {
+    match s {
+        Active => \"active\",
+        Done => \"done\",
+    }
+}
+
+fn main() {
+    let all = [Active, Done]
+    for s in all {
+        print(label(s))
+    }
+    print(label(Active))
+    print(Active == Active)
+    print(Active == Done)
+}
+";
+    assert_eq!(run(source), "active\ndone\nactive\ntrue\nfalse\n");
+}
+
+#[test]
+fn a_payload_variant_is_a_first_class_constructor() {
+    // ADR 0017: the checker types a bare `Circle` as `fn(Float) -> Shape`, so
+    // the runtime provides the matching value — a callable constructor.
+    let source = "\
+enum Shape { Circle(Float) }
+
+fn main() {
+    let ctor = Circle
+    print(ctor(2.0))
+    print(ctor(1.5))
+}
+";
+    assert_eq!(run(source), "Circle(2.0)\nCircle(1.5)\n");
+}
+
+#[test]
+fn a_constructor_can_be_passed_to_a_higher_order_function() {
+    let source = "\
+enum Shape { Circle(Float) }
+
+fn apply(f: fn(Float) -> Shape) -> Shape {
+    f(3.0)
+}
+
+fn main() {
+    print(apply(Circle))
+}
+";
+    assert_eq!(run(source), "Circle(3.0)\n");
+}
+
+#[test]
+fn a_constructor_equality_and_display_match_the_direct_form() {
+    let source = "\
+enum Shape { Circle(Float) }
+
+fn main() {
+    let ctor = Circle
+    print(ctor(1.0) == Circle(1.0))
+    print(ctor(1.0) == Circle(2.0))
+}
+";
+    assert_eq!(run(source), "true\nfalse\n");
+}
+
+#[test]
 fn runs_the_enum_and_match_example() {
     // Appendix A2
     let source = r#"

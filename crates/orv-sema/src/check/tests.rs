@@ -333,6 +333,25 @@ fn not_on_a_non_bool_reports_e0301() {
 }
 
 #[test]
+fn an_enum_type_nested_in_a_fn_type_resolves() {
+    // Regression: `fn(Float) -> Shape` kept `Shape` as `Ty::Data` while the
+    // body typed it as `Ty::Enum`, so the same name was reported as mismatched.
+    ok("enum Shape { Circle(Float) }\n\nfn g(f: fn(Float) -> Shape) -> Shape {\n    f(1.0)\n}\n");
+}
+
+#[test]
+fn an_enum_type_nested_in_a_list_and_optional_resolves() {
+    ok(
+        "enum Shape { Circle(Float) }\n\nfn g(xs: List<Shape>, s: Shape?) -> Int {\n    len(xs)\n}\n",
+    );
+}
+
+#[test]
+fn an_enum_in_a_map_value_resolves() {
+    ok("enum Shape { Circle(Float) }\n\nfn g(m: Map<Str, Shape>) -> Int {\n    len(m)\n}\n");
+}
+
+#[test]
 fn a_lambda_infers_from_a_let_annotation() {
     // §5.3: "Lambda infere parâmetros do tipo esperado."
     ok_main("let f: fn(Int) -> Int = x => x + 1");
