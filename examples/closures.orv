@@ -1,0 +1,19 @@
+// Closures capturando `let mut` e mapas com ordem de inserção estável.
+//
+// §5.3 exige tipo esperado para a lambda: sem contexto não há como inferir o
+// parâmetro, então a anotação em `let` é obrigatória (E0310 sem ela).
+fn main() {
+    let mut total = 0
+    let add: fn(Int) -> Int = n => total + n
+
+    total = 10
+    total = total + 5
+
+    print(add(1))
+    print(add(2))
+
+    let counts = #{"a": 1, "b": 2, "c": 3}
+    for key in counts {
+        print(key + " = " + str(counts[key]))
+    }
+}

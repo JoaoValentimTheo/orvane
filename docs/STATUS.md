@@ -13,6 +13,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
 | M1.2 | últimos ajustes: teste de stdout determinístico, paridade LF/CRLF com `\`, `E0006` por interpolação, float fora de faixa, docs, testes divididos | **Implemented** | mesmo gate; 17 goldens `tokens_*` |
 | M2 | parser + `orv ast` | **Implemented (alpha)** | §4.1, §4.2 e §A1–A2 parseiam; `orv ast` dumpa AST estável |
+| — | exemplos executáveis em `examples/` (6 programas) | **Implemented** | goldens `example_{hello,fizzbuzz,fib,data,shapes,closures}` |
 | M3 | sema: nomes e tipos do recorte | **Implemented (alpha)** | `orv check` aceita válidos e rejeita cada caso com o código certo |
 | M4 | interpretador: `Value`, closures, controle, coleções, prelude | **Implemented (alpha)** | `orv run` executa §4.1/§4.2/§A1/§A2 com a saída correta; `R0001`/`R0002` com exit 1 |
 | M5 | `data`/`enum`/`match` | Planned | §4.2 roda; `match` não exaustivo rejeitado |

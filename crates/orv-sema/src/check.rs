@@ -73,6 +73,11 @@ pub struct Checker {
     declarations: Vec<(String, orv_syntax::Span)>,
     /// The function whose body is being checked, for `return` typing.
     current_return: Option<Ty>,
+    /// The type expected of the expression currently being checked.
+    ///
+    /// Only used by lambdas (§5.3: a lambda infers from the expected type); it
+    /// is cleared as soon as the expression is done.
+    expected: Option<Ty>,
 }
 
 impl Default for Checker {
@@ -91,6 +96,7 @@ impl Checker {
             user_types: HashMap::new(),
             declarations: Vec::new(),
             current_return: None,
+            expected: None,
         }
     }
 
@@ -424,17 +430,19 @@ impl Checker {
                 ty,
                 value,
             } => {
-                let found = self.check_expr(value);
-                let expected = match ty {
-                    Some(annotation) => match resolve_type(annotation) {
+                // The annotation, when present, is the expected type: it is what
+                // lets a lambda infer its parameters (§5.3).
+                let annotation = ty
+                    .as_ref()
+                    .map(|annotation| match resolve_type(annotation) {
                         Ok(resolved) => self.resolve_user_type(resolved, annotation.span),
                         Err(_) => {
                             self.error("E0301", "invalid type annotation", annotation.span);
                             Ty::Unknown
                         }
-                    },
-                    None => found.clone(),
-                };
+                    });
+                let found = self.check_expr_expected(value, annotation.clone());
+                let expected = annotation.unwrap_or_else(|| found.clone());
                 if !self.assignable(&expected, &found) {
                     self.type_mismatch(&expected, &found, value.span);
                 }
@@ -477,8 +485,9 @@ impl Checker {
                 tail
             }
             StmtKind::Return(value) => {
+                let target = self.current_return.clone();
                 let found = match value {
-                    Some(value) => self.check_expr(value),
+                    Some(value) => self.check_expr_expected(value, target),
                     None => Ty::Unit,
                 };
                 let expected = self.current_return.clone().unwrap_or(Ty::Unit);
@@ -700,17 +709,79 @@ impl Checker {
                 Ty::Unknown
             }
             ExprKind::Lambda { params, body } => {
-                // §5.3: a lambda infers its parameter types from the expected
-                // type; without that context it is `E0310`.
-                self.error(
-                    "E0310",
-                    "cannot infer the type of this lambda without an expected type",
-                    expr.span,
-                );
-                let _ = (params, body);
-                Ty::Unknown
+                self.check_lambda(params, body, expr.span, self.expected.clone())
             }
         }
+    }
+
+    /// Checks a lambda against the type expected of it (§5.3).
+    ///
+    /// "Lambda infere parâmetros do tipo esperado; se não houver contexto →
+    /// E0310." The expected type is set by [`Self::check_expr_expected`] before
+    /// the lambda is reached, so `let f: fn(Int) -> Int = x => x` binds `x: Int`
+    /// and a bare `let f = x => x` reports `E0310`.
+    fn check_lambda(
+        &mut self,
+        params: &[String],
+        body: &Expr,
+        span: orv_syntax::Span,
+        expected: Option<Ty>,
+    ) -> Ty {
+        let (expected_params, expected_ret) = match expected {
+            Some(Ty::Fn { params, ret }) => (params, ret),
+            // Either there is no context, or the context is not a function
+            // type (`let f: Int = x => x`), which is the same failure to infer.
+            _ => {
+                self.error(
+                    "E0310",
+                    "cannot infer the type of this lambda without an expected function type",
+                    span,
+                );
+                return Ty::Unknown;
+            }
+        };
+
+        if expected_params.len() != params.len() {
+            self.error(
+                "E0302",
+                format!(
+                    "this function type takes {} parameter(s) but the lambda has {}",
+                    expected_params.len(),
+                    params.len()
+                ),
+                span,
+            );
+            return Ty::Unknown;
+        }
+
+        self.scopes.push();
+        for (name, ty) in params.iter().zip(expected_params.iter()) {
+            if !self.scopes.declare(Symbol {
+                name: name.clone(),
+                ty: ty.clone(),
+                mutable: false,
+            }) {
+                self.error("E0202", format!("duplicate parameter `{name}`"), span);
+            }
+        }
+        let found = self.check_expr_expected(body, Some((*expected_ret).clone()));
+        self.scopes.pop();
+
+        if !self.assignable(&expected_ret, &found) {
+            self.type_mismatch(&expected_ret, &found, body.span);
+        }
+        Ty::Fn {
+            params: expected_params,
+            ret: expected_ret,
+        }
+    }
+
+    /// Checks an expression with an expected type, so lambdas can infer.
+    fn check_expr_expected(&mut self, expr: &Expr, expected: Option<Ty>) -> Ty {
+        let previous = std::mem::replace(&mut self.expected, expected);
+        let found = self.check_expr(expr);
+        self.expected = previous;
+        found
     }
 
     /// The type of a literal.
@@ -836,11 +907,12 @@ impl Checker {
             );
         }
         for (index, arg) in args.iter().enumerate() {
-            let found = self.check_expr(&arg.value);
-            if let Some(expected) = params.get(index)
-                && !self.assignable(expected, &found)
+            let expected = params.get(index).cloned();
+            let found = self.check_expr_expected(&arg.value, expected.clone());
+            if let Some(expected) = expected
+                && !self.assignable(&expected, &found)
             {
-                self.type_mismatch(expected, &found, arg.value.span);
+                self.type_mismatch(&expected, &found, arg.value.span);
             }
         }
         (*ret).clone()
@@ -877,7 +949,7 @@ impl Checker {
                             .map(|(_, ty)| ty.clone()),
                         None => fields.get(index).map(|(_, ty)| ty.clone()),
                     };
-                    let found = self.check_expr(&arg.value);
+                    let found = self.check_expr_expected(&arg.value, expected.clone());
                     match expected {
                         Some(expected) => {
                             if !self.assignable(&expected, &found) {
@@ -1214,6 +1286,10 @@ impl Checker {
             (Ty::Optional(expected_inner), Ty::Optional(found_inner)) => {
                 self.assignable(expected_inner, found_inner)
             }
+            // A concrete value may be used where its optional is expected:
+            // `let e: Str? = "x"` is a widening, not a mismatch (§5.3). This is
+            // what makes `email: Str? = none` usable with a real address.
+            (Ty::Optional(expected_inner), found) => self.assignable(expected_inner, found),
             (Ty::List(expected_inner), Ty::List(found_inner)) => {
                 self.assignable(expected_inner, found_inner)
             }

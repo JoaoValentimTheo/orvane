@@ -14,18 +14,41 @@ PyPI (`use py numpy as np`) e pode ser chamado de Python (`import orvane`).
 - **CLI:** `orv` · **extensão:** `.orv` · **módulo Python:** `orvane`
 - Especificação completa: [`docs/SPEC.md`](docs/SPEC.md)
 
-## Status: pré-alfa — M1 concluído
+## Status: 0.1.0-alpha (em `alpha-0.1.0`)
 
-O M0 entregou a fundação (workspace, `Span`, `SourceMap`, `Diagnostic`, harness
-golden, CI). O M1 entrega o **lexer** de §5.1: tokens, strings com interpolação,
-comentários aninhados, a regra de `Newline` por pilha de delimitadores e os
-diagnósticos `E0001`–`E0006`.
+A alpha executa programas de ponta a ponta:
 
-**Ainda não há linguagem executável**: parser, sema e interpretador são M2+.
-Os subcomandos funcionais são `orv version` e o interno `orv tokens <f.orv>`.
+```console
+$ orv run examples/fizzbuzz.orv
+1
+2
+Fizz
+...
+FizzBuzz
 
-O que está pronto e testado está em [`docs/STATUS.md`](docs/STATUS.md); a
-tabela usa "Implemented" só quando há teste golden que exercita a feature.
+$ orv check examples/data.orv   # sem executar
+$ orv ast examples/shapes.orv   # dump da AST
+```
+
+**O que funciona:** funções e closures, `let`/`let mut`, `if`/`while`/`for`,
+`break`/`continue`, listas (`[]`) e mapas (`#{}`), tuplas, aritmética e
+comparação, `data`/`enum`/`match`, `try`, `as`, o prelude de §5.6
+(`print`, `len`, `range`, `str`, `int`, `float`, `assert`) e erros de runtime
+`R0001`–`R0004` como diagnóstico com exit 1.
+
+**O que ainda não existe:** `intent`/`how` (o núcleo da proposta, M6),
+interoperabilidade com Python (`use py`, M7), `orv test`/`fmt`/`repl`,
+módulos multi-arquivo, generics e interpolação *avaliada* em strings (`{expr}`
+é mantido literal na alpha). O recorte está no
+[ADR 0012](docs/adr/0012-alpha-scope.md).
+
+Nada aqui é "1.0": a alpha valida lexer, parser, sema e runtime de ponta a
+ponta antes de investir no planner. O detalhe feature-a-feature (com o teste
+que exercita cada uma) está em [`docs/STATUS.md`](docs/STATUS.md); "Implemented"
+só aparece quando há teste golden.
+
+`examples/` tem seis programas executáveis; todos são também goldens
+(`tests/golden/example_*.orv`).
 
 ## Uso
 
@@ -33,10 +56,11 @@ tabela usa "Implemented" só quando há teste golden que exercita a feature.
 $ cargo run -p orv-cli -- version
 orv 0.1.0 (orvane 0.1.0)
 
-$ cargo run -p orv-cli -- tokens tests/golden/tokens_block_lambda.orv
-4:1 Ident(xs)
-4:3 Dot
-4:4 Ident(map)
+$ cargo run -p orv-cli -- run examples/fib.orv
+0
+1
+1
+2
 ...
 ```
 

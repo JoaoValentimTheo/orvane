@@ -333,6 +333,33 @@ fn not_on_a_non_bool_reports_e0301() {
 }
 
 #[test]
+fn a_lambda_infers_from_a_let_annotation() {
+    // §5.3: "Lambda infere parâmetros do tipo esperado."
+    ok_main("let f: fn(Int) -> Int = x => x + 1");
+}
+
+#[test]
+fn a_lambda_infers_from_a_call_argument_type() {
+    ok(
+        "fn apply(f: fn(Int) -> Int, x: Int) -> Int {\n    f(x)\n}\n\nfn main() {\n    print(apply(y => y * 2, 21))\n}\n",
+    );
+}
+
+#[test]
+fn a_concrete_value_widens_into_an_optional() {
+    // `let e: Str? = "x"` is a widening, not a mismatch.
+    ok_main(r#"let e: Str? = "x""#);
+    ok_main("let e: Str? = none");
+}
+
+#[test]
+fn an_optional_field_accepts_a_concrete_value() {
+    ok(
+        "data User {\n    email: Str? = none,\n}\n\nfn main() {\n    let u = User(email: \"a@b\")\n    print(u)\n}\n",
+    );
+}
+
+#[test]
 fn lambda_without_context_reports_e0310() {
     // §5.3: a lambda needs an expected type for its parameters.
     assert_eq!(codes("fn main() {\n    let f = x => x\n}\n"), vec!["E0310"]);
