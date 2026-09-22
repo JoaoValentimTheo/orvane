@@ -93,7 +93,8 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 |---|---|---|---|
 | `E0201` | nome indefinido | `print(x)` | M3 |
 | `E0202` | definição duplicada | `fn a() {} fn a() {}` | M3 |
-| `E0230` | atribuição a imutável | `let x = 1` + `x = 2` | M3 |
+| `E0230` | atribuição a imutável / alvo inválido | `let x = 1` + `x = 2` | **M3** (alpha) |
+| `E0231` | atribuição a campo fora do alpha | `u.age = 2` | **fix/0.1.0** (ADR 0018) |
 | `E0250` | ciclo de import | `a.orv` ↔ `b.orv` | M10 |
 | `E0251` | item não `pub` importado | `use util` com `fn helper()` | M10 |
 

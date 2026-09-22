@@ -205,9 +205,38 @@ fn compound_assignment_to_an_immutable_reports_e0230() {
 }
 
 #[test]
-fn assigning_to_a_field_of_an_immutable_is_allowed() {
-    ok(
-        "data User {\n    age: Int,\n}\n\nfn main() {\n    let u = User(age: 1)\n    u.age = 2\n}\n",
+fn assigning_to_a_field_is_rejected_as_out_of_scope() {
+    // ADR 0018: field assignment is not supported in 0.1.0-alpha. The sema
+    // rejects it (E0231) so it cannot accept a program the runtime refuses.
+    assert_eq!(
+        codes(
+            "data User {\n    age: Int,\n}\n\nfn main() {\n    let u = User(age: 1)\n    u.age = 2\n}\n"
+        ),
+        vec!["E0231"]
+    );
+}
+
+#[test]
+fn assigning_to_an_optional_field_is_rejected() {
+    assert_eq!(
+        codes(
+            "data User {\n    email: Str? = none,\n}\n\nfn main() {\n    let mut u = User()\n    u?.email = \"x\"\n}\n"
+        ),
+        vec!["E0231"]
+    );
+}
+
+#[test]
+fn assigning_to_a_list_element_is_allowed() {
+    // The runtime supports this, so the sema must keep accepting it.
+    ok_main("let mut xs = [1, 2]\nxs[0] = 9");
+}
+
+#[test]
+fn assigning_to_a_map_entry_is_allowed() {
+    ok_main(
+        r#"let mut m = #{"a": 1}
+m["b"] = 2"#,
     );
 }
 

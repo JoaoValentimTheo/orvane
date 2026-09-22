@@ -1,5 +1,10 @@
 # Status das features
 
+> **Limitações visíveis da 0.1.0-alpha** (ver [ADR 0018](adr/0018-alpha-scope-limits.md)):
+> strings com `{expr}` imprimem o texto **literal** (interpolação avaliada chega
+> depois); atribuir a campo de `data` (`u.age = 2`) é `E0231` — mutação de
+> elemento de lista/mapa funciona.
+
 Regra (§0.2 item 4 / §11 item 6): uma feature só é **Implemented** se houver
 teste golden que a exercita. Sem teste → `Planned`.
 
