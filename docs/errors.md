@@ -149,7 +149,7 @@ Notas de comportamento (M3, ADR 0012):
 | `R0001` | divisão por zero | `1 / 0` · `1 % 0` | **M4** (alpha) |
 | `R0002` | overflow de inteiro | `9223372036854775807 + 1` | **M4** (alpha) |
 | `R0003` | índice fora dos limites / chave ausente | `[1][5]` · `m["z"]` | **M4** (alpha) |
-| `R0004` | recursão profunda demais | `fn f() { f() }` | **M4** (alpha) |
+| `R0004` | recursão profunda demais | `f(47)` com `MAX_CALL_DEPTH = 48` | **M4** (alpha) |
 | `R0010` | operação não suportada no alpha | atribuir a campo de `data` | **M4** (alpha) |
 | `R0020` | erro Python | exceção no host | M7 |
 

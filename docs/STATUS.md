@@ -61,6 +61,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | `enum` + `match` (payload, guarda, literal, wildcard) | `runs_the_enum_and_match_example`, `runs_match_on_integers` |
 | Prelude §5.6 | `builtins::tests::*` (13 casos) |
 | `R0001` divisão por zero, `R0002` overflow, `R0003` índice/chave, `R0004` profundidade | `division_by_zero_is_a_failure`, `integer_overflow_is_a_failure`, `index_out_of_bounds_is_a_failure`, `missing_map_key_is_a_failure`, `infinite_recursion_is_a_failure_not_a_crash` |
+| Fronteira exata de profundidade: `main` + 47 frames = 48; `f(46)` ok, `f(47)` `R0004` | `the_call_depth_boundary_is_exact` (ADR 0016) |
 | proptest: runtime nunca dá panic | `runtime_never_panics`, `runtime_never_panics_on_fragments` |
 | `orv run` (stdout = saída do programa; exit 1 em Failure) | goldens `run_fizzbuzz`, `run_data`, `run_shape`, `run_division_by_zero`, `run_overflow` |
 

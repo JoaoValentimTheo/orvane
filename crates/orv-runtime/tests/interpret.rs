@@ -489,6 +489,27 @@ print(m["z"])"#,
     assert!(message.contains("not found"), "got: {message}");
 }
 
+/// A program whose `f(n)` recurses exactly `n` times, plus the `main` frame.
+fn recursion_program(depth: i64) -> String {
+    format!(
+        "fn f(n: Int) -> Int {{\n    if n == 0 {{\n        0\n    }} else {{\n        f(n - 1)\n    }}\n}}\n\nfn main() {{\n    print(f({depth}))\n}}\n"
+    )
+}
+
+#[test]
+fn the_call_depth_boundary_is_exact() {
+    // ADR 0016: `MAX_CALL_DEPTH` counts the `main` frame, so the deepest chain
+    // that fits is `main` + 47 `f` frames = 48. This pins the boundary so a
+    // future change to the counter cannot shift it silently.
+    assert_eq!(run(&recursion_program(46)), "0\n");
+
+    let message = run_failure(&recursion_program(47));
+    assert!(
+        message.contains("call depth exceeded"),
+        "expected the depth limit at 47, got: {message}"
+    );
+}
+
 #[test]
 fn infinite_recursion_is_a_failure_not_a_crash() {
     let source = "\

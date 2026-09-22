@@ -33,6 +33,12 @@ pub enum FailureKind {
     AssertionFailed,
     /// A map lookup for a missing key.
     MissingKey,
+    /// The call stack exceeded [`MAX_CALL_DEPTH`](crate::MAX_CALL_DEPTH).
+    ///
+    /// Kept separate from [`FailureKind::Unsupported`] because §12 names it
+    /// (`R0004`) and a depth error is a property of the program's recursion,
+    /// not of an unimplemented feature.
+    StackOverflow,
     /// A runtime operation that is not supported in the alpha.
     Unsupported,
     /// Internal control flow (`break`, `continue`, `return`) travelling through
@@ -55,6 +61,7 @@ impl FailureKind {
             FailureKind::IndexOutOfBounds => "IndexOutOfBounds",
             FailureKind::AssertionFailed => "AssertionFailed",
             FailureKind::MissingKey => "MissingKey",
+            FailureKind::StackOverflow => "StackOverflow",
             FailureKind::Unsupported => "Unsupported",
             FailureKind::Flow => "Flow",
         }
@@ -68,6 +75,7 @@ impl FailureKind {
             FailureKind::IndexOutOfBounds => "R0003",
             FailureKind::AssertionFailed => "R0001",
             FailureKind::MissingKey => "R0003",
+            FailureKind::StackOverflow => "R0004",
             FailureKind::Unsupported => "R0010",
             FailureKind::Flow => "R0010",
         }
