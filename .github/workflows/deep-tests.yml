@@ -67,4 +67,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # The lexer is the layer with the most byte-level arithmetic; Miri catches
       # out-of-bounds slicing that a release run might not.
-      - run: cargo miri test -p orv-syntax --lib
+      #
+      # `rust-toolchain.toml` pins the `stable` channel, which wins over the
+      # nightly toolchain installed above, so a bare `cargo miri` resolves to
+      # stable where the `miri` component is not available. Force the nightly
+      # toolchain explicitly.
+      #
+      # `-Zmiri-disable-isolation` is required because `proptest`'s failure
+      # persistence calls `std::env::current_dir`, which Miri refuses under
+      # isolation. It is unrelated to the code under test.
+      - run: cargo +nightly miri test -p orv-syntax --lib
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation
