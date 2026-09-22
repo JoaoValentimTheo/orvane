@@ -1,0 +1,8 @@
+// orv: check %f
+// exit: 1
+fn main() {
+    for i in 0..3 {
+        let f: fn() -> () = () => { break }
+        f()
+    }
+}

@@ -17,28 +17,25 @@ Ritmo de correção, zero feature nova. Changelog: [`CHANGELOG.md`](../CHANGELOG
 | Closure perdia capturas quando o frame que a definiu retornava (`R0010: undefined name`) | `a_returned_lambda_keeps_its_captured_parameters`, `a_nested_lambda_closes_over_the_outer_lambda_parameter`, `a_lambda_returned_from_a_function_still_sees_later_outer_mutation`; golden `matrix_m28_lambda_from_frame` | 0019 |
 | Chave de mapa fora de `{Int, Str, Bool}` passava na sema e falhava no runtime (`R0010`) | `a_map_key_that_is_not_int_str_or_bool_reports_e0301`, `a_float_map_key_reports_e0301`, `int_str_and_bool_map_keys_are_accepted`; golden `matrix_m29_map_int_bool_keys` | — |
 | Nome de variante declarado por dois `enum` divergia entre `check` e `run` (ordem de hash) | `a_variant_name_shared_by_two_enums_reports_e0202`, `distinct_variant_names_in_distinct_enums_are_fine` | 0020 |
+| `break`/`continue` fora de loop: `check` aceitava, `run` falhava `R0010` | `break_outside_a_loop_reports_e0303`, `continue_outside_a_loop_reports_e0303`, `a_break_in_a_function_called_from_a_loop_reports_e0303` | 0021 |
+| `break` dentro de lambda encerrava o loop do chamador silenciosamente | `a_break_in_a_lambda_inside_a_loop_reports_e0303` (sema), `a_break_inside_a_lambda_cannot_leave_the_call`, `a_loop_inside_a_lambda_still_works` (runtime); goldens `check_break_in_lambda`, `matrix_m30_loop_break_continue` | 0021 |
 | Job `miri` do `Deep tests` nunca rodava (toolchain errada + isolamento) | execução manual do workflow, 262 testes do lexer sob Miri | — |
 | `sema_runtime_agreement.rs` não gerava tuplas/lambdas/opcionais/coleções de tipo de usuário | 4 proptests novos (`tuple_agrees`, `lambda_agrees`, `optional_agrees`, `user_type_collections_agree`) | — |
 
-### Pendências abertas da auditoria 0.1.1 (STOP CONDITION (b) — NÃO corrigidas)
+### Achados menores da auditoria 0.1.1 (não-bugs)
 
-A auditoria parou ao achar **5 bugs da classe sema↔runtime** numa sessão. Os dois
-abaixo ficaram **registrados, não corrigidos** (o limite era 3 por categoria):
+Achados registrados por serem escopo deliberado ou qualidade de mensagem, não
+divergência:
 
-1. **`break`/`continue` fora de loop** — `orv check` aceita, `orv run` falha com
-   `R0010: break or continue outside a loop`. Repro: `fn main() { break }`.
-   Regra provável: `E0303` (não é válido aqui) ou código novo; o sema precisa
-   rastrear profundidade de loop.
-2. **`break` dentro de lambda quebra o loop do chamador** — pior que o anterior
-   porque é silencioso (sem erro, saída errada). Repro:
-   `for i in 0..3 { let f: fn() -> () = () => { break } f() }` imprime só a
-   primeira iteração e sai do loop. O `Control::Break` vaza da closure para o
-   loop do chamador. Regra provável: `break`/`continue` não podem atravessar a
-   fronteira de uma lambda (ou o `pending`/controle deve ser confinado à chamada).
-
-Ambos compartilham a causa (o sema não rastreia contexto de loop e o runtime deixa
-o controle atravessar a fronteira da chamada). Próximo passo exato: tratar como
-um item só, no início de 0.1.2, com ADR curta sobre escopo de `break`/`continue`.
+- `t.0` (acesso indexado a tupla) e patterns de tupla não existem na gramática
+  de §5.2; o parser recusa consistente (`E0102`). Escopo.
+- `match` não exaustivo ainda não é rejeitado — exaustividade é `E0320`, M5
+  (Planned). Lacuna de milestone, não bug.
+- `return` dentro de lambda com corpo de bloco produz **dois** `E0301`
+  (`expected (), found Int` + `expected Int, found ()`) — qualidade de
+  diagnóstico, `check`≡`run`. Candidato a 0.1.2.
+- `break` como corpo de arm de `match` é erro de parse (`E0102`): `break` é
+  statement, coerente com a gramática.
 
 ## Estabilização 0.1.0 (`fix/0.1.0-stabilization`)
 
