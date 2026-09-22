@@ -1,0 +1,6 @@
+// orv: run %f
+// exit: 1
+// R0002: overflow de inteiro é Failure, não wrap (SPEC §5.3).
+fn main() {
+    print(9223372036854775807 + 1)
+}

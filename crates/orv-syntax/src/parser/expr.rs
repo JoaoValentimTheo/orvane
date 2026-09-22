@@ -618,10 +618,12 @@ impl Parser<'_> {
         // §4.1 writes the `else` on the next line:
         //     let out = if i % 15 == 0 { "FizzBuzz" }
         //               else if i % 3 == 0 { "Fizz" }
-        // so the newline before `else` is part of the construct, not a
-        // statement boundary.
+        // so a newline before `else` belongs to the construct. The lookahead
+        // must not *consume* it when there is no `else`: the newline also
+        // terminates the statement, and eating it would make the next
+        // statement look unexpected.
         let mut else_branch: Option<Box<Expr>> = None;
-        self.skip_newlines();
+        self.skip_newlines_if_else_follows();
         if self.kind() == &TokenKind::Kw(Keyword::Else) {
             self.bump();
             if self.kind() == &TokenKind::Kw(Keyword::If) {

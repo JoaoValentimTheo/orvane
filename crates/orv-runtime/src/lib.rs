@@ -1,17 +1,28 @@
-//! Orvane runtime crate.
+//! Orvane runtime: values, environments, the tree-walking interpreter and the
+//! program driver (SPEC §5.3, §5.5).
 //!
-//! Planned for M4 (`Value`, tree-walking interpreter), M6 (`Planner`, `Trace`)
-//! and M7 (`Host`, `NoHost`, `MockHost`). M0 ships the crate skeleton only.
+//! The 0.1.0-alpha scope is recorded in ADR 0012: functions, closures, control
+//! flow, collections, arithmetic/comparison, string interpolation of literal
+//! parts, `print` and the prelude. `intent`/`how`, Python interop, modules and
+//! `data`-mutation of nested fields are out.
+//!
+//! Nothing in this crate panics for user input: arithmetic uses checked
+//! operations, indexing is bounds-checked and recursion is depth-limited
+//! (ADR 0016), so every problem surfaces as a [`failure::Failure`].
 
 #![forbid(unsafe_code)]
 
-#[cfg(test)]
-mod tests {
-    /// The crate is intentionally empty in M0: this test pins the workspace
-    /// wiring so `cargo test --workspace` exercises every member.
-    #[test]
-    fn crate_is_wired() {
-        let name = env!("CARGO_PKG_NAME");
-        assert_eq!(name, "orv-runtime");
-    }
-}
+pub mod builtins;
+pub mod driver;
+pub mod env;
+pub mod failure;
+pub mod function;
+pub mod interpreter;
+pub mod value;
+
+pub use driver::{RunOutcome, prepare, register, run};
+pub use env::Env;
+pub use failure::{Failure, FailureKind, Frame};
+pub use function::{Callable, Closure};
+pub use interpreter::{Control, EvalResult, Interpreter, MAX_CALL_DEPTH};
+pub use value::{MapKey, MapValue, Value, display, repr};

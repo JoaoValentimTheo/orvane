@@ -101,7 +101,7 @@ impl fmt::Display for Ty {
 ///
 /// A single type argument is required for `List`; `Map` takes two. Anything
 /// else is reported by the caller through the returned error.
-pub(crate) fn resolve_type(ast: &AstType) -> Result<Ty, TypeProblem> {
+pub fn resolve_type(ast: &AstType) -> Result<Ty, TypeProblem> {
     match &ast.kind {
         TypeKind::Py => Ok(Ty::Py),
         TypeKind::Unit => Ok(Ty::Unit),
@@ -182,7 +182,7 @@ fn resolve_named(name: &str, args: &[AstType], span: Span) -> Result<Ty, TypePro
 
 /// A problem found while resolving a type annotation.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum TypeProblem {
+pub enum TypeProblem {
     /// A builtin was given the wrong number of type arguments.
     WrongArity {
         name: String,

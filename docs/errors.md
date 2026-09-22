@@ -146,11 +146,11 @@ Notas de comportamento (M3, ADR 0012):
 
 | Código | Mensagem | Exemplo mínimo | Status |
 |---|---|---|---|
-| `R0001` | divisão por zero | `1 / 0` | M4 |
-| `R0002` | overflow de inteiro | `i64::MAX + 1` | M4 |
-| `R0003` | índice fora dos limites | `[1][5]` | M4 |
-| `R0004` | estouro de pilha | intent recursiva | M6 |
-| `R0010` | intent insatisfeita | todas as strategies falham | M6 |
+| `R0001` | divisão por zero | `1 / 0` · `1 % 0` | **M4** (alpha) |
+| `R0002` | overflow de inteiro | `9223372036854775807 + 1` | **M4** (alpha) |
+| `R0003` | índice fora dos limites / chave ausente | `[1][5]` · `m["z"]` | **M4** (alpha) |
+| `R0004` | recursão profunda demais | `fn f() { f() }` | **M4** (alpha) |
+| `R0010` | operação não suportada no alpha | atribuir a campo de `data` | **M4** (alpha) |
 | `R0020` | erro Python | exceção no host | M7 |
 
 > M0 não introduz código de diagnóstico novo: apenas o tipo `Diagnostic`, o

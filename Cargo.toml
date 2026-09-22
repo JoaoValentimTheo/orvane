@@ -7,6 +7,7 @@ members = [
     "crates/orv-py",
     "crates/orv-cli",
     "crates/orv-pymod",
+    "crates/orv-tools",
 ]
 
 [workspace.package]
@@ -24,6 +25,7 @@ orv-sema = { path = "crates/orv-sema" }
 orv-runtime = { path = "crates/orv-runtime" }
 orv-py = { path = "crates/orv-py" }
 orv-pymod = { path = "crates/orv-pymod" }
+orv-tools = { path = "crates/orv-tools" }
 
 thiserror = "2.0.20"
 ariadne = "0.6.0"

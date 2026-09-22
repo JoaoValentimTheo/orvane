@@ -1,0 +1,13 @@
+// orv: run %f
+// §4.2: data com construtor nomeado, Display e igualdade estrutural.
+data User {
+    name: Str,
+    age: Int,
+    email: Str? = none,
+}
+
+fn main() {
+    let u = User(name: "Mel", age: 30)
+    print(u)
+    print(u == User("Mel", 30))
+}

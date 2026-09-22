@@ -10,6 +10,7 @@ mod ast;
 mod check;
 mod cli;
 mod diag;
+mod run;
 mod tokens;
 
 fn main() -> std::process::ExitCode {
