@@ -685,10 +685,11 @@ impl Interpreter {
             });
         }
         if self.depth >= MAX_CALL_DEPTH {
-            return Err(self.unsupported(
+            return Err(Box::new(Failure::new(
+                FailureKind::StackOverflow,
                 format!("call depth exceeded {MAX_CALL_DEPTH} (possible infinite recursion)"),
                 span,
-            ));
+            )));
         }
 
         let names = function.param_names();
