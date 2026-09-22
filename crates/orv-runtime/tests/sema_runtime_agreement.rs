@@ -160,10 +160,131 @@ fn mixed_program(iterations: usize, use_closure: bool, use_map: bool) -> Program
     }
 }
 
+/// Builds a program that puts a tuple in a `data` field, in a list, and reads
+/// it back through a `match`-free path.
+fn tuple_program(arity: usize, in_data: bool, in_list: bool) -> Program {
+    let arity = arity.max(2);
+    let elements: Vec<String> = (0..arity).map(|i| i.to_string()).collect();
+    let literal = format!("({})", elements.join(", "));
+
+    let mut body = String::new();
+    let mut decl = String::new();
+    body.push_str(&format!("    let t = {literal}\n    print(t)\n"));
+    if in_data {
+        decl.push_str("data Holder {\n    t: (Int, Int),\n}\n\n");
+        let pair = format!("({}, {})", 1, 2);
+        body.push_str(&format!(
+            "    let h = Holder(t: {pair})\n    print(h.t == {pair})\n"
+        ));
+    }
+    if in_list {
+        body.push_str("    let xs = [(1, 2), (3, 4)]\n    print(len(xs))\n");
+    }
+
+    Program {
+        source: format!("{decl}fn main() {{\n{body}}}\n"),
+        description: format!("tuple arity={arity} data={in_data} list={in_list}"),
+    }
+}
+
+/// Builds a program with lambdas that capture a frame parameter or another
+/// lambda's parameter, return a lambda, and nest one level.
+fn lambda_program(captures_frame: bool, from_return: bool, nested: bool) -> Program {
+    if captures_frame && from_return {
+        // `adder`'s returned lambda closes over its parameter `n`.
+        return Program {
+            source: "\
+fn adder(n: Int) -> fn(Int) -> Int {
+    let f: fn(Int) -> Int = (x) => x + n
+    return f
+}
+
+fn main() {
+    print(adder(10)(5))
+}
+"
+            .to_owned(),
+            description: "lambda captures frame, returned".to_owned(),
+        };
+    }
+
+    let mut body = String::new();
+    if nested {
+        body.push_str("    let f: fn(Int) -> fn(Int) -> Int = a => (b) => a + b\n");
+        body.push_str("    print(f(1)(2))\n");
+    } else {
+        body.push_str("    let n = 10\n");
+        body.push_str("    let f: fn(Int) -> Int = (x) => x + n\n");
+        body.push_str("    print(f(5))\n");
+    }
+
+    Program {
+        source: format!("fn main() {{\n{body}}}\n"),
+        description: format!("lambda frame={captures_frame} return={from_return} nested={nested}"),
+    }
+}
+
+/// Builds a program with an optional field, read via `?.` and `??`, and a
+/// `data?` binding that may be `none`.
+fn optional_program(field_present: bool, whole_optional: bool) -> Program {
+    let mut decl = String::from("data Inner {\n    v: Int,\n}\n\n");
+    let mut body = String::new();
+    if whole_optional {
+        decl.push_str("data Outer {\n    i: Inner?,\n}\n\n");
+        let ctor = if field_present {
+            "Outer(i: Inner(v: 9))".to_owned()
+        } else {
+            "Outer(i: none)".to_owned()
+        };
+        body.push_str(&format!("    let o = {ctor}\n"));
+        body.push_str("    print(o.i?.v ?? 0)\n");
+    } else {
+        decl.push_str("data Outer {\n    v: Int?,\n}\n\n");
+        let ctor = if field_present {
+            "Outer(v: 9)".to_owned()
+        } else {
+            "Outer(v: none)".to_owned()
+        };
+        body.push_str(&format!("    let o = {ctor}\n"));
+        body.push_str("    print(o.v ?? 0)\n");
+    }
+
+    Program {
+        source: format!("{decl}fn main() {{\n{body}}}\n"),
+        description: format!("optional field={field_present} whole={whole_optional}"),
+    }
+}
+
+/// Builds a program with a list of `data`, a map of `data`, and an enum list.
+fn user_type_collections_program(in_list: bool, in_map: bool, enum_list: bool) -> Program {
+    let mut decl = String::from("data P {\n    x: Int,\n}\n\n");
+    let mut body = String::new();
+
+    if in_list {
+        body.push_str("    let ps = [P(x: 1), P(x: 2)]\n");
+        body.push_str("    print(len(ps))\n");
+        body.push_str("    for p in ps {\n        print(p.x)\n    }\n");
+    }
+    if in_map {
+        body.push_str("    let m = #{\"a\": P(x: 1)}\n");
+        body.push_str("    print(m[\"a\"].x)\n");
+    }
+    if enum_list {
+        decl.push_str("enum E {\n    A,\n    B,\n}\n\n");
+        body.push_str("    let es = [A, B]\n");
+        body.push_str("    print(len(es))\n");
+        body.push_str("    for e in es {\n        match e {\n            A => print(\"a\"),\n            B => print(\"b\"),\n        }\n    }\n");
+    }
+
+    Program {
+        source: format!("{decl}fn main() {{\n{body}}}\n"),
+        description: format!("user collections list={in_list} map={in_map} enum_list={enum_list}"),
+    }
+}
+
 /// Runs one generated program and asserts the sema/runtime agreement invariant.
 ///
 /// Returns `Ok(())` when the program is consistent (either the sema rejects it,
-/// or it runs, or it fails for a legitimate reason).
 fn assert_agreement(program: &Program) -> Result<(), TestCaseError> {
     let mut sources = SourceMap::new();
     let id = sources.add("generated.orv", program.source.as_str());
@@ -255,5 +376,41 @@ proptest! {
         use_map in any::<bool>(),
     ) {
         assert_agreement(&mixed_program(iterations, use_closure, use_map))?;
+    }
+
+    /// Tuples agree, including a tuple as a `data` field and inside a list.
+    #[test]
+    fn tuple_agrees(
+        arity in 2usize..5,
+        in_data in any::<bool>(),
+        in_list in any::<bool>(),
+    ) {
+        assert_agreement(&tuple_program(arity, in_data, in_list))?;
+    }
+
+    /// Lambdas agree whether they capture a frame, are returned, or nest.
+    #[test]
+    fn lambda_agrees(
+        captures_frame in any::<bool>(),
+        from_return in any::<bool>(),
+        nested in any::<bool>(),
+    ) {
+        assert_agreement(&lambda_program(captures_frame, from_return, nested))?;
+    }
+
+    /// Optional fields agree for present/absent and `data?`/`Int?`.
+    #[test]
+    fn optional_agrees(field_present in any::<bool>(), whole_optional in any::<bool>()) {
+        assert_agreement(&optional_program(field_present, whole_optional))?;
+    }
+
+    /// Lists/maps of user types and enum lists agree.
+    #[test]
+    fn user_type_collections_agree(
+        in_list in any::<bool>(),
+        in_map in any::<bool>(),
+        enum_list in any::<bool>(),
+    ) {
+        assert_agreement(&user_type_collections_program(in_list, in_map, enum_list))?;
     }
 }
