@@ -60,6 +60,36 @@ aponta o arquivo em `tests/golden/`. `examples/` tem os programas idiomáticos.
 | **Enum unitário em lista, iterado, em `match`** | `matrix_m26_enum_in_list`, `examples/enum_flags.orv` | **corrigido nesta sprint** | `matrix_m26_...`, `example_enum_flags` |
 | **Construtor de variante como valor** | `matrix_m27_closure_constructor` | **corrigido nesta sprint** (ADR 0017) | `matrix_m27_...` |
 
+## Combinações cruzadas (sprint `fix-0.1.1`)
+
+Cada linha cruza **duas** construções que isoladamente já tinham golden, mas cuja
+junção não era exercitada. O critério continua "roda e produz a saída esperada".
+
+| Combinação | Onde é exercitada | Resultado | Golden |
+|---|---|---|---|
+| Lambda como campo de `data`, chamada pelo campo | `matrix_m28_lambda_from_frame` | ok | — (coberto por `interpret.rs`) |
+| Lambda retornada por `fn` que captura o parâmetro do frame | `matrix_m28_lambda_from_frame` | **corrigido nesta sprint** (ADR 0019) | `matrix_m28_...` |
+| Lambda aninhada `a => (b) => a + b` | `matrix_m28_lambda_from_frame` | **corrigido nesta sprint** (ADR 0019) | `matrix_m28_...` |
+| Closure captura `data`/`enum`/mapa e é chamada depois | `interpret.rs` (`a_lambda_returned_...`) | ok | — |
+| Closure mutável como contador retornado (`make_counter`) | `interpret.rs` | ok (só após ADR 0019) | — |
+| Tupla dentro de `data`, em lista e em `match` de variante | `matrix_m23_tuple` + probes | ok | `matrix_m23_tuple` |
+| `enum` com payload de `data`, `match` com binding | probes `e09` | ok | — |
+| `enum` como chave de mapa | probe `e06` | **era bug** → sema recusa (E0301) | — |
+| `data`/`enum` como chave de mapa | probes `k_data` | **era bug** → sema recusa (E0301) | — |
+| Mapa com chave `Int`/`Bool`, iterado com `for` | `matrix_m29_map_int_bool_keys` | **corrigido nesta sprint** | `matrix_m29_...` |
+| `match` aninhado (enum dentro de enum) | probe `f01` | ok | — |
+| Guarda encadeada com wildcard final | probe `f03` | ok | — |
+| `match` como expressão retornando lambda | probe `e04` (E0310, sem contexto) | consistente | — |
+| Campo opcional `List<Int>?` com `??` | probe `f05` | ok | — |
+| Tipo de usuário aninhado em `fn(..)`, `List`, `Map` | `matrix_m18` + probes | corrigido na 0.1.0 | — |
+| Índice aninhado (`xs[1][0]`, `m["a"][1]`) | probes `g03`, `g04` | ok | — |
+| Recursão mútua (`is_even`/`is_odd`) | probe `f14` | ok | — |
+
+**Nota sobre `t.0` e patterns de tupla:** a gramática de §5.2 só tem
+`field = "." IDENT` e `pattern = "_" | literal | IDENT | IDENT "(" ... ")"`. Nem
+acesso indexado a tupla nem pattern de tupla existem no recorte; o parser recusa
+consistente (E0102) e isso é escopo, não bug.
+
 ## Assimetrias sema↔runtime (item 9)
 
 Percorri cada branch de `check_expr`/`ident_type`/`check_call`/`check_assignable_target`
@@ -99,11 +129,17 @@ em `orv-sema/src/check.rs` e procurei o branch espelhado em
 | `Assign` a `Field` | ausente no runtime | **divergia** → sema agora recusa (`E0231`, ADR 0018) |
 | `Assign` a `OptionalField` | ausente no runtime | **divergia** → sema agora recusa (`E0231`) |
 | Tipo aninhado (`fn(..) -> Enum`, `List<Enum>`, `Map<_, Enum>`) | `resolve_user_type` não recursava | **era bug** → corrigido (mesma sprint) |
+| Chave de mapa fora de `{Int, Str, Bool}` (`enum`, `data`, `Float`) | `MapKey::from_value` só aceita os três | **divergia** → sema agora recusa (`E0301`, 0.1.1) |
+| Lambda capturando parâmetro de frame que já retornou / lambda aninhada | `Env` compartilhava a cadeia e o `pop` removia a captura | **era bug** → corrigido (`Env::snapshot`, ADR 0019, 0.1.1) |
 
 **Resultado:** as assimetrias encontradas foram 3, todas corrigidas nesta sprint
 (as duas de variante e a de `Assign` a campo). Nenhuma ficou como "apenas
 documentação". O item 9 pedia para relatar também as que virassem documentação:
 não houve nenhuma.
+
+**Na 0.1.1** a mesma varredura, dirigida a combinações cruzadas, achou mais 2
+divergências da mesma classe (chave de mapa e captura de closure), ambas
+corrigidas e agora cobertas pelo gerador de `sema_runtime_agreement.rs`.
 
 Como garantia permanente, `crates/orv-runtime/tests/sema_runtime_agreement.rs`
 gera programas **consistentes** (nomes de campo e variante reaproveitados de

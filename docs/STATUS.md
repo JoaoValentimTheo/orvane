@@ -8,6 +8,17 @@
 Regra (§0.2 item 4 / §11 item 6): uma feature só é **Implemented** se houver
 teste golden que a exercita. Sem teste → `Planned`.
 
+## Correções 0.1.1 (`fix-0.1.1`)
+
+Ritmo de correção, zero feature nova. Changelog: [`CHANGELOG.md`](../CHANGELOG.md).
+
+| Correção | Teste de regressão | ADR |
+|---|---|---|
+| Closure perdia capturas quando o frame que a definiu retornava (`R0010: undefined name`) | `a_returned_lambda_keeps_its_captured_parameters`, `a_nested_lambda_closes_over_the_outer_lambda_parameter`, `a_lambda_returned_from_a_function_still_sees_later_outer_mutation`; golden `matrix_m28_lambda_from_frame` | 0019 |
+| Chave de mapa fora de `{Int, Str, Bool}` passava na sema e falhava no runtime (`R0010`) | `a_map_key_that_is_not_int_str_or_bool_reports_e0301`, `a_float_map_key_reports_e0301`, `int_str_and_bool_map_keys_are_accepted`; golden `matrix_m29_map_int_bool_keys` | — |
+| Job `miri` do `Deep tests` nunca rodava (toolchain errada + isolamento) | execução manual do workflow, 262 testes do lexer sob Miri | — |
+| `sema_runtime_agreement.rs` não gerava tuplas/lambdas/opcionais/coleções de tipo de usuário | 4 proptests novos (`tuple_agrees`, `lambda_agrees`, `optional_agrees`, `user_type_collections_agree`) | — |
+
 ## Estabilização 0.1.0 (`fix/0.1.0-stabilization`)
 
 | Correção | Teste de regressão | ADR |
