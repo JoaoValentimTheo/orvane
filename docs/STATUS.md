@@ -12,7 +12,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | M1 | lexer: tokens de §5.1, interpolação, comentários, `E0001`–`E0006`, `orv tokens` | **Implemented** | `orv tokens x.orv` dumpa tokens estáveis; 128 testes de unidade + 2 proptests |
 | M1.1 | correções pós-revisão: `-->` rejeitado, BOM, recuperação de erro (ADR 0008), LF×CR, docs | **Implemented** | mesmo gate; 16 goldens `tokens_*` |
 | M1.2 | últimos ajustes: teste de stdout determinístico, paridade LF/CRLF com `\`, `E0006` por interpolação, float fora de faixa, docs, testes divididos | **Implemented** | mesmo gate; 17 goldens `tokens_*` |
-| M2 | parser + `orv ast` | In progress (primary) | §4.1–§4.2 parseiam |
+| M2 | parser + `orv ast` | **Implemented (alpha)** | §4.1, §4.2 e §A1–A2 parseiam; `orv ast` dumpa AST estável |
 | M3 | sema v1 (nomes e tipos) | Planned | `orv check` |
 | M4 | interpretador v1 | Planned | `orv run examples/fib.orv` |
 | M5 | `data`/`enum`/`match` | Planned | §4.2 roda; `match` não exaustivo rejeitado |
@@ -58,7 +58,19 @@ pipeline (ADR 0008, emenda).
 | `i64::MIN` sem literal: `(-9223372036854775807) - 1` (ADR 0007 §6.2) | `i64_min_cannot_be_written_as_a_literal`, `the_overflowing_magnitude_is_not_recoverable_from_tokens` |
 | `Float Dot Int` (`1.2.3`) é erro **sintático** `E0102`, não léxico (ADR 0011) | decisão registrada; `float_dot_int_is_a_syntax_error_by_grammar` (lexer) |
 | AST de primary: `Literal`/`Ident`/`Paren`/`Block`, `Span` em todo nó | `parser::tests::*` |
-| Parser de primary: literal, `ident`, `( expr )`, bloco esqueleto | suíte `parser::tests` (28 casos) |
+| Parser completo de §5.2: expressões, statements, itens, tipos, patterns | suíte `parser::tests` (97 casos) |
+| Pratt com a precedência de §5.2.1 | `parses_arithmetic_with_precedence`, `subtraction_is_left_associative`, `coalesce_binds_looser_than_or`, `and_binds_tighter_than_or`, `comparison_binds_looser_than_addition`, `unary_binds_tighter_than_multiplication`, `precedence_of_cast_relative_to_arithmetic` |
+| Lambda (1 e N params, corpo bloco) | `parses_single_parameter_lambda`, `parses_multi_parameter_lambda`, `parses_lambda_with_block_body`, `parenthesised_expression_is_not_a_lambda` |
+| Coleções `[]`, `#{}` | `parses_list_literal`, `parses_empty_list`, `parses_list_with_trailing_comma`, `parses_map_literal`, `parses_empty_map` |
+| `if`/`else if`, `match` com guarda, `try`/`fail` | `parses_if_expression`, `allows_a_newline_before_else`, `parses_match_expression`, `parses_match_with_guard`, `parses_try_expression`, `parses_fail_as_a_statement` |
+| `fn`/`data`/`enum`/`use` | `parses_a_function_declaration`, `parses_data_declaration`, `parses_enum_declaration`, `parses_use_declaration`, `parses_parameter_defaults` |
+| Tipos de §5.2 (`List<T>`, tuplas, `fn(...) -> ...`, `T?`, `()`) | `parses_generic_type_annotation`, `parses_tuple_and_fn_types`, `parses_unit_type` |
+| Recuperação: um erro por statement, múltiplos por arquivo | `a_broken_statement_does_not_hide_the_next_one`, `several_errors_in_one_file_are_all_reported`, `a_broken_item_does_not_hide_the_next_one` |
+| `E0104` aninhamento profundo (ADR 0013) | `deeply_nested_input_reports_e0104_instead_of_overflowing`, `deeply_nested_unary_reports_e0104`, `moderately_nested_input_is_fine` |
+| `E0105` recusa explícita do que está fora do alpha | `intent_is_refused_with_e0105`, `how_is_refused_with_e0105`, `test_block_is_refused_with_e0105`, `use_py_is_refused_with_e0105`, `pub_data_is_refused_with_e0105` |
+| proptest: parser nunca dá panic | `parser_never_panics`, `parser_never_panics_on_fragments` |
+| `orv ast` + dump estável (ADR 0014) | goldens `ast_hello`, `ast_fizzbuzz`, `ast_shape` |
+| Programas de referência §4.1/§4.2/§A1/§A2 parseiam | `parses_the_appendix_a1_fizzbuzz`, `parses_the_appendix_a2_data_example`, `parses_the_appendix_a2_enum_and_match_example` |
 | `E0102` quando falta `)` ou `}` | `missing_closing_paren_reports_e0102`, `unclosed_block_reports_e0102`, `empty_parens_report_e0102` |
 | Diagnóstico do parser suprimido por erro léxico (ADR 0008 regra 3) | `a_parser_error_inside_a_broken_literal_is_suppressed`, `without_suppression_that_parser_error_would_exist` |
 | `should_subparse_expr` respeitado no parser (ADR 0008 regra 4) | `a_string_with_a_lexical_error_blocks_the_subparse_and_adds_nothing`, `the_subparse_guard_is_consulted_for_strings` |

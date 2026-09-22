@@ -1,0 +1,44 @@
+Fn main
+  Block
+    For i
+      Binary ..=
+        Literal 1
+        Literal 15
+      Block
+        Let out =
+          If
+            Binary ==
+              Binary %
+                Ident i
+                Literal 15
+              Literal 0
+            Block
+              Literal "FizzBuzz"
+            Else
+              If
+                Binary ==
+                  Binary %
+                    Ident i
+                    Literal 3
+                  Literal 0
+                Block
+                  Literal "Fizz"
+                Else
+                  If
+                    Binary ==
+                      Binary %
+                        Ident i
+                        Literal 5
+                      Literal 0
+                    Block
+                      Literal "Buzz"
+                    Else
+                      Block
+                        Call
+                          Ident str
+                          arg
+                            Ident i
+        Call
+          Ident print
+          arg
+            Ident out

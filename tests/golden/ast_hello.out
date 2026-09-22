@@ -1,0 +1,6 @@
+Fn main
+  Block
+    Call
+      Ident print
+      arg
+        Literal "Olá, Orvane!"

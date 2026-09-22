@@ -5,6 +5,7 @@
 //! [AST](ast) and [parser](parser) incrementally.
 
 pub mod ast;
+pub mod ast_dump;
 pub mod diagnostic;
 pub mod diagnostics;
 pub mod dump;
@@ -14,7 +15,11 @@ pub mod render;
 pub mod source;
 pub mod span;
 
-pub use ast::{Block, Expr, ExprKind, Literal, Stmt};
+pub use ast::{
+    Arg, AssignOp, BinaryOp, Block, DataDecl, EnumDecl, Expr, ExprKind, FieldDecl, FnDecl, Item,
+    ItemKind, Literal, MatchArm, Param, Pattern, PatternKind, Program, Stmt, StmtKind, Type,
+    TypeKind, UnaryOp, UseDecl, VariantDecl,
+};
 pub use diagnostic::{Diagnostic, Label, Severity};
 pub use diagnostics::Diagnostics;
 pub use lexer::{StrPart, Token, TokenKind, lex};

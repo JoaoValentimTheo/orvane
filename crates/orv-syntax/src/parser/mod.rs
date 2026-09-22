@@ -1,20 +1,29 @@
 //! Recursive-descent parser (SPEC §5.2).
 //!
-//! M2 builds this in steps. This step implements **primary expressions only**:
-//! literals, identifiers, `( expr )` and a `{ }` block skeleton. Operators,
-//! calls, indexing, field access, `if`/`match`, statements and error recovery
-//! are deliberately absent.
+//! The 0.1.0-alpha scope is recorded in ADR 0012: `intent`/`how`/`test`/`use py`
+//! are **not** parsed.
 //!
 //! The parser consumes the token stream from the lexer, which may contain
 //! best-effort tokens after a lexical error (ADR 0008 A). It reports its own
 //! diagnostics into a [`Diagnostics`] aggregation seeded with the lexical ones,
 //! so a parser diagnostic that intersects a lexical error is suppressed
 //! (ADR 0008 amend, rules 2 and 3).
+//!
+//! Layout:
+//! * [`expr`] — expressions (Pratt precedence from §5.2.1, postfix, primaries);
+//! * [`stmt`] — statements and blocks;
+//! * [`item`] — top-level items and the program root;
+//! * [`types`] — type annotations.
 
-use crate::ast::{Block, Expr, ExprKind, Literal};
+mod expr;
+mod item;
+mod stmt;
+mod types;
+
+use crate::ast::Program;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostics::Diagnostics;
-use crate::lexer::{Keyword, StrPart, Token, TokenKind};
+use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 
 /// The parser state while walking the token stream.
@@ -25,17 +34,24 @@ pub struct Parser<'a> {
     cursor: usize,
     /// Aggregation seeded with the lexical diagnostics; the parser adds to it.
     diagnostics: Diagnostics,
+    /// Recursion depth, to keep a pathological input from blowing the stack.
+    depth: u32,
 }
 
-/// The outcome of a parse: the expression plus every retained diagnostic.
+/// Deepest expression nesting accepted before the parser gives up.
 ///
-/// `diagnostics` is the merged set (lexical first, parser additions filtered),
-/// so callers can decide with [`Diagnostics::has_errors`] whether to continue to
-/// sema/run. As there is no CLI for this yet, the gate is documented, not wired.
+/// A recursive-descent parser can be driven into stack overflow by deeply
+/// nested input (`((((...`), and "never panic for arbitrary input" is a hard
+/// requirement. The limit is generous for real programs and turns the
+/// pathological case into a diagnostic (ADR 0013).
+pub(crate) const MAX_DEPTH: u32 = 256;
+
+/// The outcome of parsing a program.
 #[derive(Debug)]
 pub struct ParseResult {
-    /// The parsed expression, when the input starts with a valid primary.
-    pub expr: Option<Expr>,
+    /// The program, when parsing started at all. `items` may be partial after
+    /// error recovery.
+    pub program: Option<Program>,
     /// Lexical and parser diagnostics, lexical first.
     pub diagnostics: Diagnostics,
 }
@@ -57,294 +73,17 @@ impl<'a> Parser<'a> {
             tokens,
             cursor: 0,
             diagnostics: Diagnostics::new(lexical),
+            depth: 0,
         }
     }
 
-    /// Parses a single expression from the start of the stream.
-    ///
-    /// Trailing tokens are **not** consumed: this step has no statement
-    /// grammar, so the caller decides what to do with the remainder.
-    pub fn parse_expr(&mut self) -> ParseResult {
-        let expr = self.parse_postfix();
+    /// Parses a whole program (SPEC §5.2 `program`).
+    pub fn parse_program(&mut self) -> ParseResult {
+        let program = self.program();
         ParseResult {
-            expr,
+            program,
             diagnostics: std::mem::take(&mut self.diagnostics),
         }
-    }
-
-    /// Parses a primary followed by any number of postfix forms (SPEC §5.2):
-    ///
-    /// ```ebnf
-    /// postfix = primary { call | index | field | "?." IDENT } ;
-    /// ```
-    ///
-    /// The result's span runs from the start of the primary to the end of the
-    /// last postfix.
-    pub fn parse_postfix(&mut self) -> Option<Expr> {
-        let mut expr = self.parse_primary()?;
-        loop {
-            let token = self.current().clone();
-            match token.kind {
-                TokenKind::Dot | TokenKind::QuestionDot => {
-                    let optional = token.kind == TokenKind::QuestionDot;
-                    expr = self.parse_field_access(expr, optional)?;
-                }
-                TokenKind::LParen => expr = self.parse_call(expr)?,
-                TokenKind::LBracket => expr = self.parse_index(expr)?,
-                // Something that cannot extend a postfix ends the chain; the
-                // caller decides whether what follows is valid in context.
-                _ => return Some(expr),
-            }
-        }
-    }
-
-    /// Parses `"." IDENT` or `"?." IDENT`, with `receiver` already parsed.
-    ///
-    /// A missing identifier is `E0102`; this is what rejects `1.2.3`, decided in
-    /// ADR 0011 (`field = "." IDENT` cannot derive a numeric literal after `.`).
-    fn parse_field_access(&mut self, receiver: Expr, optional: bool) -> Option<Expr> {
-        self.advance(); // the `.` or `?.`
-
-        let token = self.current().clone();
-        let TokenKind::Ident(name) = token.kind.clone() else {
-            let expected = if optional {
-                "identifier after `?.`"
-            } else {
-                "identifier after `.`"
-            };
-            self.report_expected(expected, &token);
-            return None;
-        };
-        self.advance();
-
-        let span = receiver.span.to(token.span);
-        let kind = if optional {
-            ExprKind::OptionalField {
-                receiver: Box::new(receiver),
-                name,
-            }
-        } else {
-            ExprKind::Field {
-                receiver: Box::new(receiver),
-                name,
-            }
-        };
-        Some(Expr::new(kind, span))
-    }
-
-    /// Parses `( [arg { "," arg } [","]] )`, with `callee` already parsed.
-    ///
-    /// Arguments are parsed with [`Self::parse_postfix`], so they may be
-    /// primaries with their own postfix chains; operators arrive with Pratt.
-    fn parse_call(&mut self, callee: Expr) -> Option<Expr> {
-        self.advance(); // the `(`
-
-        let mut args: Vec<Expr> = Vec::new();
-        loop {
-            let token = self.current().clone();
-            match token.kind {
-                TokenKind::RParen => {
-                    self.advance();
-                    let span = callee.span.to(token.span);
-                    return Some(Expr::new(
-                        ExprKind::Call {
-                            callee: Box::new(callee),
-                            args,
-                        },
-                        span,
-                    ));
-                }
-                TokenKind::Eof | TokenKind::Newline => {
-                    self.report_expected("`)`", &token);
-                    return None;
-                }
-                TokenKind::Comma if args.is_empty() => {
-                    let token = self.current().clone();
-                    self.report_expected("expression", &token);
-                    return None;
-                }
-                _ => {
-                    let arg = self.parse_postfix()?;
-                    args.push(arg);
-                    let token = self.current().clone();
-                    match token.kind {
-                        TokenKind::Comma => self.advance(),
-                        TokenKind::RParen => {
-                            self.advance();
-                            let span = callee.span.to(token.span);
-                            return Some(Expr::new(
-                                ExprKind::Call {
-                                    callee: Box::new(callee),
-                                    args,
-                                },
-                                span,
-                            ));
-                        }
-                        _ => {
-                            self.report_expected("`,` or `)`", &token);
-                            return None;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Parses `[ expr ]`, with `receiver` already parsed.
-    fn parse_index(&mut self, receiver: Expr) -> Option<Expr> {
-        self.advance(); // the `[`
-
-        let index = self.parse_postfix()?;
-        let token = self.current().clone();
-        if token.kind == TokenKind::RBracket {
-            self.advance();
-            let span = receiver.span.to(token.span);
-            return Some(Expr::new(
-                ExprKind::Index {
-                    receiver: Box::new(receiver),
-                    index: Box::new(index),
-                },
-                span,
-            ));
-        }
-        self.report_expected("`]`", &token);
-        None
-    }
-
-    /// Parses a primary expression.
-    ///
-    /// Returns `None` after reporting a diagnostic when the current token cannot
-    /// start a primary.
-    pub fn parse_primary(&mut self) -> Option<Expr> {
-        let token = self.current().clone();
-        match token.kind {
-            TokenKind::Int(value) => {
-                self.advance();
-                Some(Expr::new(
-                    ExprKind::Literal(Literal::Int(value)),
-                    token.span,
-                ))
-            }
-            TokenKind::Float(value) => {
-                self.advance();
-                Some(Expr::new(
-                    ExprKind::Literal(Literal::Float(value)),
-                    token.span,
-                ))
-            }
-            TokenKind::Str(parts) => {
-                self.advance();
-                let parts = self.prepare_str_parts(parts, token.span);
-                Some(Expr::new(
-                    ExprKind::Literal(Literal::Str(parts)),
-                    token.span,
-                ))
-            }
-            TokenKind::Kw(Keyword::True) => {
-                self.advance();
-                Some(Expr::new(
-                    ExprKind::Literal(Literal::Bool(true)),
-                    token.span,
-                ))
-            }
-            TokenKind::Kw(Keyword::False) => {
-                self.advance();
-                Some(Expr::new(
-                    ExprKind::Literal(Literal::Bool(false)),
-                    token.span,
-                ))
-            }
-            TokenKind::Kw(Keyword::None) => {
-                self.advance();
-                Some(Expr::new(ExprKind::Literal(Literal::None), token.span))
-            }
-            TokenKind::Ident(name) => {
-                self.advance();
-                Some(Expr::new(ExprKind::Ident(name), token.span))
-            }
-            TokenKind::LParen => self.parse_paren(),
-            TokenKind::LBrace => self
-                .parse_block()
-                .map(|block| Expr::new(ExprKind::Block(block.clone()), block.span)),
-            _ => {
-                self.report_expected("expression", &token);
-                None
-            }
-        }
-    }
-
-    /// Parses `( expr )`, reporting `E0102` when the `)` is missing.
-    fn parse_paren(&mut self) -> Option<Expr> {
-        let open = self.current().span;
-        self.advance(); // the `(`
-
-        let inner = self.parse_primary()?;
-
-        let close = self.current().clone();
-        if close.kind == TokenKind::RParen {
-            self.advance();
-            let span = open.to(close.span);
-            return Some(Expr::new(ExprKind::Paren(Box::new(inner)), span));
-        }
-
-        // Missing `)`. The span covers what was read, so the caret lands on the
-        // offending token rather than on an invented position.
-        self.report_expected("`)`", &close);
-        None
-    }
-
-    /// Parses a `{ ... }` block skeleton.
-    ///
-    /// The statement grammar is out of scope, so only the empty block (and a
-    /// block of newlines) is accepted; anything else reports `E0101`.
-    fn parse_block(&mut self) -> Option<Block> {
-        let open = self.current().span;
-        self.advance(); // the `{`
-
-        loop {
-            let token = self.current().clone();
-            match token.kind {
-                TokenKind::RBrace => {
-                    self.advance();
-                    return Some(Block::new(open.to(token.span)));
-                }
-                // Newlines are layout, not content, in this skeleton.
-                TokenKind::Newline => self.advance(),
-                TokenKind::Eof => {
-                    // No closing brace: the span runs to the end of input.
-                    self.report_expected("`}`", &token);
-                    return None;
-                }
-                _ => {
-                    // Statements are not implemented yet, so a block with
-                    // content is rejected rather than silently dropped.
-                    self.report_unexpected_statement(&token);
-                    return None;
-                }
-            }
-        }
-    }
-
-    /// Prepares the parts of a string literal for the AST.
-    ///
-    /// When the `Str` token carries a lexical error it is *best effort*: its
-    /// [`StrPart::Expr`] text may be truncated or still contain the offending
-    /// byte, so it must not be re-lexed, and no parser diagnostic may come from
-    /// it (ADR 0008 amend, rule 4). The guard is the span of the whole token,
-    /// because the lexical diagnostic can point at any byte of the literal.
-    ///
-    /// The lexer already produced the parts, so returning them unchanged *is*
-    /// skipping the sub-parse: nothing here re-lexes [`StrPart::Expr::src`].
-    /// That field is what a later step will feed to the parser, and this guard
-    /// is the switch that later step must consult.
-    ///
-    /// [`StrPart::Expr::src`]: crate::lexer::StrPart::Expr
-    fn prepare_str_parts(&self, parts: Vec<StrPart>, token_span: Span) -> Vec<StrPart> {
-        // The decision is recorded even though nothing acts on it yet, so the
-        // guard is exercised (and its value observable in tests) from the step
-        // that introduces string parsing.
-        let _subparse_allowed = self.diagnostics.should_subparse_expr(token_span);
-        parts
     }
 
     // --- Token access -------------------------------------------------------
@@ -353,7 +92,7 @@ impl<'a> Parser<'a> {
     ///
     /// Falls back to the last token (`Eof`, per the lexer invariant) so this
     /// never panics, even on an empty slice.
-    fn current(&self) -> &Token {
+    pub(crate) fn current(&self) -> &Token {
         match self.tokens.get(self.cursor) {
             Some(token) => token,
             None => match self.tokens.last() {
@@ -365,35 +104,111 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Advances past the current token, stopping at the last one.
-    fn advance(&mut self) {
+    /// The token `offset` positions ahead, clamped to the last token.
+    pub(crate) fn peek(&self, offset: usize) -> &Token {
+        let index = self.cursor.saturating_add(offset);
+        match self.tokens.get(index) {
+            Some(token) => token,
+            None => match self.tokens.last() {
+                Some(last) => last,
+                None => &EMPTY_EOF,
+            },
+        }
+    }
+
+    /// The kind under the cursor.
+    pub(crate) fn kind(&self) -> &TokenKind {
+        &self.current().kind
+    }
+
+    /// Whether the cursor is on `Eof`.
+    pub(crate) fn at_eof(&self) -> bool {
+        matches!(self.kind(), TokenKind::Eof)
+    }
+
+    /// Consumes the current token and returns it.
+    pub(crate) fn bump(&mut self) -> Token {
+        let token = self.current().clone();
         if self.cursor + 1 < self.tokens.len() {
             self.cursor += 1;
         }
+        token
+    }
+
+    /// Consumes the current token when it is `kind`.
+    pub(crate) fn eat(&mut self, kind: &TokenKind) -> Option<Token> {
+        if self.kind() == kind {
+            Some(self.bump())
+        } else {
+            None
+        }
+    }
+
+    /// Skips any run of `Newline` tokens (layout inside a block or file).
+    pub(crate) fn skip_newlines(&mut self) {
+        while self.kind() == &TokenKind::Newline {
+            self.bump();
+        }
+    }
+
+    /// Enters a nested parse, refusing past [`MAX_DEPTH`].
+    ///
+    /// Returns `false` (after reporting `E0104`) when the limit is reached, so
+    /// the caller can stop instead of overflowing the stack.
+    pub(crate) fn enter(&mut self) -> bool {
+        if self.depth >= MAX_DEPTH {
+            let span = self.current().span;
+            self.report(
+                "E0104",
+                "expression nesting is too deep",
+                span,
+                Some(format!("the limit is {MAX_DEPTH} levels")),
+            );
+            return false;
+        }
+        self.depth += 1;
+        true
+    }
+
+    /// Leaves a nested parse started with [`Self::enter`].
+    pub(crate) fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
     }
 
     // --- Diagnostics --------------------------------------------------------
 
-    /// Reports `E0102` ("expected X, found Y") for `found`.
-    ///
-    /// Goes through [`Diagnostics::extend_suppressed`], so a lexical error on
-    /// the same region suppresses it (ADR 0008 amend, rule 3).
-    fn report_expected(&mut self, expected: &str, found: &Token) {
-        let message = format!("expected {expected}, found {}", describe(&found.kind));
-        self.diagnostics
-            .extend_suppressed([Diagnostic::error("E0102", message, found.span)]);
+    /// Reports a diagnostic, subject to lexical suppression.
+    pub(crate) fn report(
+        &mut self,
+        code: &'static str,
+        message: impl Into<String>,
+        span: Span,
+        help: Option<String>,
+    ) {
+        let mut diagnostic = Diagnostic::error(code, message, span);
+        if let Some(help) = help {
+            diagnostic = diagnostic.with_help(help);
+        }
+        self.diagnostics.extend_suppressed([diagnostic]);
     }
 
-    /// Reports `E0101` for a token that is unexpected here.
-    fn report_unexpected_statement(&mut self, found: &Token) {
-        self.diagnostics.extend_suppressed([Diagnostic::error(
-            "E0101",
-            format!(
-                "unexpected {} (statements are not implemented yet)",
-                describe(&found.kind)
-            ),
-            found.span,
-        )]);
+    /// Reports `E0102` ("expected X, found Y") for the current token.
+    pub(crate) fn report_expected(&mut self, expected: &str, found: &Token) {
+        let message = format!("expected {expected}, found {}", describe(&found.kind));
+        self.report("E0102", message, found.span, None);
+    }
+
+    /// Whether the string token at `span` may have its `Expr` parts sub-parsed.
+    ///
+    /// A `Str` is *best effort* when the lexer already failed on it (ADR 0008 A),
+    /// so its interpolation text must not be re-lexed (rule 4).
+    pub(crate) fn subparse_allowed(&self, span: Span) -> bool {
+        self.diagnostics.should_subparse_expr(span)
+    }
+
+    /// The raw cursor index, used to guarantee progress during recovery.
+    pub(crate) fn cursor_index(&self) -> usize {
+        self.cursor
     }
 }
 
@@ -407,7 +222,7 @@ static EMPTY_EOF: Token = Token {
 ///
 /// Kept separate from the dump format on purpose: diagnostics are prose, the
 /// dump is a machine-readable contract (ADR 0006).
-fn describe(kind: &TokenKind) -> String {
+pub(crate) fn describe(kind: &TokenKind) -> String {
     match kind {
         TokenKind::Int(value) => format!("`{value}`"),
         TokenKind::Float(value) => format!("`{value}`"),

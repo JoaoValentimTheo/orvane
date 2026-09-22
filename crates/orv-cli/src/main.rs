@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod ast;
 mod cli;
 mod diag;
 mod tokens;
