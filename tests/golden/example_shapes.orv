@@ -1,0 +1,25 @@
+// orv: run %f
+// Exemplo: examples/shapes.orv
+// §A2: enum com payload e match com binding posicional.
+enum Shape { Circle(Float), Rect(Float, Float) }
+
+fn area(s: Shape) -> Float {
+    match s {
+        Circle(r) => 3.14159 * r * r,
+        Rect(w, h) => w * h,
+    }
+}
+
+fn name(s: Shape) -> Str {
+    match s {
+        Circle(_) => "circle",
+        Rect(_, _) => "rect",
+    }
+}
+
+fn main() {
+    let shapes = [Rect(2.0, 3.0), Circle(1.0)]
+    for s in shapes {
+        print(name(s) + ": " + str(area(s)))
+    }
+}
