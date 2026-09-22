@@ -1,0 +1,7 @@
+// orv: tokens %f
+// M1 obrigatório: lambda com bloco dentro de chamada. O `{` torna Newline
+// significativo mesmo com um `(` aberto.
+xs.map(x => {
+    let y = 1
+    y
+})

@@ -2,6 +2,12 @@
 **/*.rs.bk
 .DS_Store
 
+# Local secrets and agent/tool state
+.env*
+kilo.jsonc
+opencode.json
+.kilo/
+
 # Python / maturin
 __pycache__/
 *.py[cod]
@@ -14,6 +20,3 @@ build/
 dist/
 wheels/
 .pytest_cache/
-
-# Insta snapshot pending files
-*.snap.new

@@ -1,0 +1,8 @@
+// orv: tokens %f
+// Comentários: linha não consome o Newline; bloco é aninhável e conta como um
+// único Newline quando contém quebra de linha.
+a // fim de linha
+b /* x */ c
+d /* um
+     dois */ e
+f /* aninha /* interno */ ainda */ g

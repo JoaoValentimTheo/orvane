@@ -1,0 +1,4 @@
+// orv: tokens %f
+// exit: 1
+// E0002: string não terminada.
+let s = "abc

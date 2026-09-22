@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 58eb34b02a82f599cbd214995e811da9420420cabdaded1af94a9be5e16ab461 # shrinks to fragments = ["x => {\n"]
+cc e6c7b134dbf63513f171247be207c9b34d0020cb77c35dd69025d7b4930956ac # shrinks to fragments = ["\u{feff}", "{"]
+cc 76ee34bccfd3e343f52d30b1278c34242925d5ee654132f549e6be396f45a927 # shrinks to fragments = ["\"", "\\\n"]
+cc 18ae8aad08c60573a1ec7b8d8f447469c5dbbf13b751dc0b659ab0331b648417 # shrinks to fragments = ["\"", "\\\n"]

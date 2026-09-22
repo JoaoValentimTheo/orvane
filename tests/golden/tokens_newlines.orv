@@ -1,0 +1,14 @@
+// orv: tokens %f
+// Colonne/linha de cada token; Newline colapsa e não aparece no início do
+// arquivo. `()` e `[]` suprimem Newline; `{}` de bloco não.
+a
+
+b
+f(
+1,
+2
+)
+[
+3,
+4
+]
