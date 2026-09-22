@@ -580,8 +580,15 @@ impl Parser<'_> {
                 return Some(Expr::new(ExprKind::Map(entries), span));
             }
             if self.at_eof() {
+                // An unclosed map literal ran to the end of input: `E0103`,
+                // anchored at the `#{` that was never closed.
                 let found = self.current().clone();
-                self.report_expected("`}`", &found);
+                self.report(
+                    "E0103",
+                    "unclosed map literal",
+                    open.to(found.span),
+                    Some("add `}` to close this map".to_owned()),
+                );
                 return None;
             }
             let key = self.expr()?;
@@ -679,8 +686,14 @@ impl Parser<'_> {
                 ));
             }
             if self.at_eof() {
+                // An unclosed `match` body: `E0103`, anchored at the `match`.
                 let found = self.current().clone();
-                self.report_expected("`}`", &found);
+                self.report(
+                    "E0103",
+                    "unclosed `match` body",
+                    start.to(found.span),
+                    Some("add `}` to close this `match`".to_owned()),
+                );
                 return None;
             }
             let arm_start = self.current().span;

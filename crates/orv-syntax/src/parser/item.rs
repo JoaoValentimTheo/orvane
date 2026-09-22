@@ -324,8 +324,14 @@ impl Parser<'_> {
                 break;
             }
             if self.at_eof() {
+                // An unclosed `data` body: `E0103`, anchored at the keyword.
                 let found = self.current().clone();
-                self.report_expected("`}`", &found);
+                self.report(
+                    "E0103",
+                    format!("unclosed `data {name}` body"),
+                    start.to(found.span),
+                    Some("add `}` to close this declaration".to_owned()),
+                );
                 return None;
             }
             fields.push(self.field_decl()?);
@@ -412,8 +418,14 @@ impl Parser<'_> {
                 break;
             }
             if self.at_eof() {
+                // An unclosed `enum` body: `E0103`, anchored at the keyword.
                 let found = self.current().clone();
-                self.report_expected("`}`", &found);
+                self.report(
+                    "E0103",
+                    format!("unclosed `enum {name}` body"),
+                    start.to(found.span),
+                    Some("add `}` to close this declaration".to_owned()),
+                );
                 return None;
             }
             variants.push(self.variant_decl()?);
