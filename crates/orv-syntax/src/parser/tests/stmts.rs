@@ -198,8 +198,8 @@ fn several_errors_in_one_file_are_all_reported() {
 fn an_unclosed_block_reports_and_keeps_the_items_before_it() {
     let parsed = parse("fn a() {\n    1\n}\nfn b() {\n    2\n");
     assert!(
-        parsed.codes.contains(&"E0102"),
-        "expected a missing-brace error: {:?}",
+        parsed.codes.contains(&"E0103"),
+        "an unclosed block is E0103, not E0102: {:?}",
         parsed.codes
     );
     assert_eq!(

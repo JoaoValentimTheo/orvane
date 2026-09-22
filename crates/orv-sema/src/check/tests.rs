@@ -205,9 +205,38 @@ fn compound_assignment_to_an_immutable_reports_e0230() {
 }
 
 #[test]
-fn assigning_to_a_field_of_an_immutable_is_allowed() {
-    ok(
-        "data User {\n    age: Int,\n}\n\nfn main() {\n    let u = User(age: 1)\n    u.age = 2\n}\n",
+fn assigning_to_a_field_is_rejected_as_out_of_scope() {
+    // ADR 0018: field assignment is not supported in 0.1.0-alpha. The sema
+    // rejects it (E0231) so it cannot accept a program the runtime refuses.
+    assert_eq!(
+        codes(
+            "data User {\n    age: Int,\n}\n\nfn main() {\n    let u = User(age: 1)\n    u.age = 2\n}\n"
+        ),
+        vec!["E0231"]
+    );
+}
+
+#[test]
+fn assigning_to_an_optional_field_is_rejected() {
+    assert_eq!(
+        codes(
+            "data User {\n    email: Str? = none,\n}\n\nfn main() {\n    let mut u = User()\n    u?.email = \"x\"\n}\n"
+        ),
+        vec!["E0231"]
+    );
+}
+
+#[test]
+fn assigning_to_a_list_element_is_allowed() {
+    // The runtime supports this, so the sema must keep accepting it.
+    ok_main("let mut xs = [1, 2]\nxs[0] = 9");
+}
+
+#[test]
+fn assigning_to_a_map_entry_is_allowed() {
+    ok_main(
+        r#"let mut m = #{"a": 1}
+m["b"] = 2"#,
     );
 }
 
@@ -330,6 +359,25 @@ fn negating_a_string_reports_e0301() {
 #[test]
 fn not_on_a_non_bool_reports_e0301() {
     assert_eq!(codes("fn main() {\n    let x = not 1\n}\n"), vec!["E0301"]);
+}
+
+#[test]
+fn an_enum_type_nested_in_a_fn_type_resolves() {
+    // Regression: `fn(Float) -> Shape` kept `Shape` as `Ty::Data` while the
+    // body typed it as `Ty::Enum`, so the same name was reported as mismatched.
+    ok("enum Shape { Circle(Float) }\n\nfn g(f: fn(Float) -> Shape) -> Shape {\n    f(1.0)\n}\n");
+}
+
+#[test]
+fn an_enum_type_nested_in_a_list_and_optional_resolves() {
+    ok(
+        "enum Shape { Circle(Float) }\n\nfn g(xs: List<Shape>, s: Shape?) -> Int {\n    len(xs)\n}\n",
+    );
+}
+
+#[test]
+fn an_enum_in_a_map_value_resolves() {
+    ok("enum Shape { Circle(Float) }\n\nfn g(m: Map<Str, Shape>) -> Int {\n    len(m)\n}\n");
 }
 
 #[test]

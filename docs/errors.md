@@ -51,9 +51,13 @@ stream continua cobrindo o arquivo; a validade é decidida pelos diagnósticos.
 
 Notas de comportamento (M2):
 
-- `E0102` cobre "faltou algo": `)`, `]`, `}`, `,`, `:`, `=>`, `=`, um operando, um
+- `E0102` cobre "faltou algo": `)`, `]`, `,`, `:`, `=>`, `=`, um operando, um
   tipo, um nome. A recuperação sincroniza no próximo `Newline`/`}` e continua, de
   modo que **um erro por statement**, não uma cascata.
+- `E0103` é o caso específico de um bloco delimitado por chaves que chega ao fim
+  do arquivo: `fn`/`bloco`, `data`, `enum`, `match` e `#{}`. O span aponta o
+  **delimitador de abertura**, não o EOF, porque a causa é a chave que faltou.
+  Um `{...}` aninhado que não fecha produz um `E0103` por nível aberto.
 - `E0104` existe para que entrada patológica não dê estouro de pilha: o parser é
   recursive-descent e o limite é 256 níveis (ADR 0013).
 - `E0105` é a recusa explícita do que está **fora do alpha** (ADR 0012):
@@ -79,7 +83,7 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 |---|---|---|---|
 | `E0101` | token inesperado | `1` no nível de item | **M2** |
 | `E0102` | esperado X, encontrado Y | `let = 1` · `1.2.3` · `f(1` | **M2** |
-| `E0103` | bloco não fechado | `fn main() {` | M2 (via `E0102` hoje) |
+| `E0103` | bloco não fechado | `fn main() {` · `data D {` · `match x {` | **fix/0.1.0** |
 | `E0104` | aninhamento profundo demais | `((((…1…))))` com 1000 níveis | **M2** |
 | `E0105` | construção fora do alpha | `intent f() -> Int` · `use py math` · `pub data D` | **M2** |
 
@@ -89,7 +93,8 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 |---|---|---|---|
 | `E0201` | nome indefinido | `print(x)` | M3 |
 | `E0202` | definição duplicada | `fn a() {} fn a() {}` | M3 |
-| `E0230` | atribuição a imutável | `let x = 1` + `x = 2` | M3 |
+| `E0230` | atribuição a imutável / alvo inválido | `let x = 1` + `x = 2` | **M3** (alpha) |
+| `E0231` | atribuição a campo fora do alpha | `u.age = 2` | **fix/0.1.0** (ADR 0018) |
 | `E0250` | ciclo de import | `a.orv` ↔ `b.orv` | M10 |
 | `E0251` | item não `pub` importado | `use util` com `fn helper()` | M10 |
 
@@ -149,7 +154,7 @@ Notas de comportamento (M3, ADR 0012):
 | `R0001` | divisão por zero | `1 / 0` · `1 % 0` | **M4** (alpha) |
 | `R0002` | overflow de inteiro | `9223372036854775807 + 1` | **M4** (alpha) |
 | `R0003` | índice fora dos limites / chave ausente | `[1][5]` · `m["z"]` | **M4** (alpha) |
-| `R0004` | recursão profunda demais | `fn f() { f() }` | **M4** (alpha) |
+| `R0004` | recursão profunda demais | `f(47)` com `MAX_CALL_DEPTH = 48` | **M4** (alpha) |
 | `R0010` | operação não suportada no alpha | atribuir a campo de `data` | **M4** (alpha) |
 | `R0020` | erro Python | exceção no host | M7 |
 

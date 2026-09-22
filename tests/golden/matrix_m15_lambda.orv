@@ -1,0 +1,15 @@
+// orv: run %f
+fn apply(f: fn(Int) -> Int, x: Int) -> Int {
+    f(x)
+}
+
+fn main() {
+    let double: fn(Int) -> Int = n => n * 2
+    print(double(21))
+    print(apply(n => n + 1, 41))
+    let block_lambda: fn(Int) -> Int = n => {
+        let y = n * 3
+        y
+    }
+    print(block_lambda(2))
+}

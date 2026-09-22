@@ -1,7 +1,28 @@
 # Status das features
 
+> **Limitações visíveis da 0.1.0-alpha** (ver [ADR 0018](adr/0018-alpha-scope-limits.md)):
+> strings com `{expr}` imprimem o texto **literal** (interpolação avaliada chega
+> depois); atribuir a campo de `data` (`u.age = 2`) é `E0231` — mutação de
+> elemento de lista/mapa funciona.
+
 Regra (§0.2 item 4 / §11 item 6): uma feature só é **Implemented** se houver
 teste golden que a exercita. Sem teste → `Planned`.
+
+## Estabilização 0.1.0 (`fix/0.1.0-stabilization`)
+
+| Correção | Teste de regressão | ADR |
+|---|---|---|
+| Variante sem payload construía no `check` mas não no `run` (R0010) | `runs_a_unit_only_enum`, `runs_unit_variants_as_values_and_in_collections` | 0017 |
+| Variante com payload não tinha valor de construtor no runtime | `a_payload_variant_is_a_first_class_constructor`, `a_constructor_can_be_passed_to_a_higher_order_function` | 0017 |
+| Tipo de usuário aninhado (`fn(..) -> E`, `List<E>`, `Map<_, E>`) ficava como `Data` e acusava `expected E, found E` | `an_enum_type_nested_in_a_fn_type_resolves`, `an_enum_type_nested_in_a_list_and_optional_resolves`, `an_enum_in_a_map_value_resolves` | — |
+| `main` conta como 1 dos 48 frames; fronteira agora fixada | `the_call_depth_boundary_is_exact` | 0016 |
+| Profundidade era `R0010`; agora é `R0004` como §12 diz | `infinite_recursion_is_a_failure_not_a_crash` | — |
+| Bloco não fechado era `E0102`; agora é `E0103` | `an_unclosed_function_body_reports_e0103`, `an_unclosed_data_body_reports_e0103`, `an_unclosed_enum_body_reports_e0103`, `an_unclosed_match_body_reports_e0103`, golden `check_unclosed_block` | — |
+| Atribuição a campo passava no `check` e falhava no `run`; agora é `E0231` | `assigning_to_a_field_is_rejected_as_out_of_scope`, `assigning_to_an_optional_field_is_rejected` | 0018 |
+| Concordância sema↔runtime como invariante testada | `sema_runtime_agreement.rs` (4 proptests dirigidos) | — |
+
+Matriz de cobertura completa de §4.1/§4.2/§A: [`docs/coverage-matrix.md`](coverage-matrix.md).
+Os 27 programas da matriz são goldens (`tests/golden/matrix_*.orv`).
 
 ## Milestones
 
@@ -61,6 +82,7 @@ teste golden que a exercita. Sem teste → `Planned`.
 | `enum` + `match` (payload, guarda, literal, wildcard) | `runs_the_enum_and_match_example`, `runs_match_on_integers` |
 | Prelude §5.6 | `builtins::tests::*` (13 casos) |
 | `R0001` divisão por zero, `R0002` overflow, `R0003` índice/chave, `R0004` profundidade | `division_by_zero_is_a_failure`, `integer_overflow_is_a_failure`, `index_out_of_bounds_is_a_failure`, `missing_map_key_is_a_failure`, `infinite_recursion_is_a_failure_not_a_crash` |
+| Fronteira exata de profundidade: `main` + 47 frames = 48; `f(46)` ok, `f(47)` `R0004` | `the_call_depth_boundary_is_exact` (ADR 0016) |
 | proptest: runtime nunca dá panic | `runtime_never_panics`, `runtime_never_panics_on_fragments` |
 | `orv run` (stdout = saída do programa; exit 1 em Failure) | goldens `run_fizzbuzz`, `run_data`, `run_shape`, `run_division_by_zero`, `run_overflow` |
 

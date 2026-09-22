@@ -38,8 +38,18 @@ impl Parser<'_> {
                     return Some(block);
                 }
                 TokenKind::Eof => {
+                    // A block that runs to the end of input is `E0103`
+                    // ("unclosed block"), not `E0102` ("expected X, found Y"):
+                    // the author did not mistype a token, they forgot the `}`.
+                    // The span covers the block from its opening `{`, which is
+                    // the useful position for this error.
                     let found = self.current().clone();
-                    self.report_expected("`}`", &found);
+                    self.report(
+                        "E0103",
+                        "unclosed block",
+                        open.span.to(found.span),
+                        Some("add `}` to close this block".to_owned()),
+                    );
                     let mut block = Block::new(open.span.to(found.span));
                     block.statements = statements;
                     return Some(block);

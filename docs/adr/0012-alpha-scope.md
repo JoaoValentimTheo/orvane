@@ -43,6 +43,11 @@ alpha precisa e adiar o resto.
 - **Stdlib além do imprescindível:** só `print`, `len`, `range`, `str`, `int`,
   `float`, `assert` (prelude) e `std.text`/`std.list`/`std.math` no mínimo.
 - **`--json`**, **`--explain`**, e `orv tokens` continua sendo debug interno.
+- **Interpolação `{expr}` avaliada em strings**: o lexer preserva os
+  `StrPart::Expr` e a AST os carrega, mas a 0.1.0 imprime o texto literal.
+  Detalhado no ADR 0018.
+- **Atribuição a campo de `data`** (`u.age = 2`): a sema recusa com `E0231`,
+  porque o runtime não tem lugar mutável para um campo. Detalhado no ADR 0018.
 
 **Regra de saída:** se uma fatia do roadmap conflitar com o recorte, o recorte
 vence; se algo do recorte exigir sintaxe nova, para (não inventar).

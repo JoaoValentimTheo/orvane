@@ -39,6 +39,54 @@ fn map_without_colon_reports_e0102() {
 }
 
 #[test]
+fn an_unclosed_function_body_reports_e0103() {
+    // §12 names E0103 for an unclosed block; it is a distinct cause from
+    // "expected X, found Y", so it gets its own code.
+    let parsed = parse("fn main() {\n    let x = 1\n");
+    let e0103: Vec<_> = parsed
+        .codes
+        .iter()
+        .filter(|code| **code == "E0103")
+        .collect();
+    assert_eq!(e0103.len(), 1, "got: {:?}", parsed.codes);
+    assert!(
+        parsed.messages.iter().any(|m| m == "unclosed block"),
+        "got: {:?}",
+        parsed.messages
+    );
+}
+
+#[test]
+fn an_unclosed_data_body_reports_e0103() {
+    let parsed = parse("data D {\n    x: Int,\n");
+    assert!(parsed.codes.contains(&"E0103"), "got: {:?}", parsed.codes);
+}
+
+#[test]
+fn an_unclosed_enum_body_reports_e0103() {
+    let parsed = parse("enum E {\n    A,\n");
+    assert!(parsed.codes.contains(&"E0103"), "got: {:?}", parsed.codes);
+}
+
+#[test]
+fn an_unclosed_match_body_reports_e0103() {
+    let parsed = parse("fn main() {\n    match x {\n        1 => 2,\n}\n");
+    assert!(parsed.codes.contains(&"E0103"), "got: {:?}", parsed.codes);
+}
+
+#[test]
+fn a_missing_closing_paren_still_reports_e0102() {
+    // E0103 is only for blocks; a missing `)` keeps the general code.
+    let parsed = parse("fn main() {\n    (1 + 2\n}\n");
+    assert!(parsed.codes.contains(&"E0102"), "got: {:?}", parsed.codes);
+    assert!(
+        !parsed.codes.contains(&"E0103"),
+        "a block was closed: {:?}",
+        parsed.codes
+    );
+}
+
+#[test]
 fn missing_fn_body_reports_e0102() {
     let parsed = parse("fn main()\n");
     assert!(

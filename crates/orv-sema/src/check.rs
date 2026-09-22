@@ -551,9 +551,30 @@ impl Checker {
                     // The undefined name is already reported by `check_expr`.
                 }
             },
-            // `u.field = v` and `xs[i] = v` are allowed: the place is mutable
-            // even when the binding is not (§5.2 `lvalue`).
-            ExprKind::Field { .. } | ExprKind::Index { .. } | ExprKind::OptionalField { .. } => {}
+            // `xs[i] = v` is allowed: the place is mutable even when the
+            // binding is not (§5.2 `lvalue`), and the runtime supports it.
+            ExprKind::Index { .. } => {}
+            // Assigning to a field of a `data` value is **not supported in
+            // 0.1.0-alpha** (ADR 0012, ADR 0018): the runtime cannot mutate a
+            // `Value::Data` behind its `Rc`. Rejecting here keeps sema and
+            // runtime from disagreeing about what is a valid program — the
+            // same class of bug this sprint fixed for enum variants.
+            ExprKind::Field { name, .. } => {
+                self.error(
+                    "E0231",
+                    format!(
+                        "assigning to field `{name}` is not supported in 0.1.0-alpha; rebuild the value instead"
+                    ),
+                    statement_span,
+                );
+            }
+            ExprKind::OptionalField { name, .. } => {
+                self.error(
+                    "E0231",
+                    format!("cannot assign to optional field `{name}`"),
+                    statement_span,
+                );
+            }
             _ => {
                 self.error("E0230", "invalid assignment target", statement_span);
             }
@@ -1347,6 +1368,14 @@ impl Checker {
     }
 
     /// Resolves a user type name against the declarations.
+    /// Resolves user type names against the declarations, **recursively**.
+    ///
+    /// `resolve_type` cannot know whether `Shape` is a `data` or an `enum`, so
+    /// it returns `Ty::Data` and this pass corrects it. The recursion matters:
+    /// in `fn(Float) -> Shape` or `List<Shape>` the name is nested, and leaving
+    /// it as `Ty::Data` makes `assignable` reject a value the expression side
+    /// types as `Ty::Enum` — the same type reported as "expected `Shape`, found
+    /// `Shape`".
     fn resolve_user_type(&mut self, ty: Ty, span: orv_syntax::Span) -> Ty {
         match ty {
             Ty::Data(name) => match self.user_types.get(&name) {
@@ -1356,6 +1385,26 @@ impl Checker {
                     self.error("E0201", format!("undefined type `{name}`"), span);
                     Ty::Unknown
                 }
+            },
+            Ty::List(element) => Ty::List(Box::new(self.resolve_user_type(*element, span))),
+            Ty::Optional(inner) => Ty::Optional(Box::new(self.resolve_user_type(*inner, span))),
+            Ty::Result(ok) => Ty::Result(Box::new(self.resolve_user_type(*ok, span))),
+            Ty::Map(key, value) => Ty::Map(
+                Box::new(self.resolve_user_type(*key, span)),
+                Box::new(self.resolve_user_type(*value, span)),
+            ),
+            Ty::Tuple(elements) => Ty::Tuple(
+                elements
+                    .into_iter()
+                    .map(|element| self.resolve_user_type(element, span))
+                    .collect(),
+            ),
+            Ty::Fn { params, ret } => Ty::Fn {
+                params: params
+                    .into_iter()
+                    .map(|param| self.resolve_user_type(param, span))
+                    .collect(),
+                ret: Box::new(self.resolve_user_type(*ret, span)),
             },
             other => other,
         }
@@ -1379,11 +1428,17 @@ impl Checker {
 
     /// Reports a type mismatch.
     fn type_mismatch(&mut self, expected: &Ty, found: &Ty, span: orv_syntax::Span) {
-        self.error(
-            "E0301",
-            format!("expected `{expected}`, found `{found}`"),
-            span,
-        );
+        // The two types can render identically (`expected `Shape`, found
+        // `Shape``) when the names match but the kinds do not, which hides the
+        // cause. Disambiguate with the internal form in that case.
+        let expected_text = expected.name();
+        let found_text = found.name();
+        let message = if expected_text == found_text && expected != found {
+            format!("expected `{expected_text}`, found `{found_text}` ({expected:?} vs {found:?})")
+        } else {
+            format!("expected `{expected_text}`, found `{found_text}`")
+        };
+        self.error("E0301", message, span);
     }
 
     /// Pushes an error diagnostic.

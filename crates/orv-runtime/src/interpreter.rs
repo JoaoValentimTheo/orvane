@@ -272,13 +272,39 @@ impl Interpreter {
         }
     }
 
-    /// Evaluates an identifier: a local binding or a function.
+    /// Evaluates an identifier: a local binding, a function, or a bare
+    /// unit-variant such as `Active`.
+    ///
+    /// The unit-variant case is the runtime mirror of
+    /// [`Checker::ident_type`](orv_sema::Checker): when the checker resolves a
+    /// name to an enum variant it returns `Ty::Enum(name)`, so the runtime must
+    /// be able to build that value here. Without this the front end accepts a
+    /// program the interpreter then refuses with R0010 — sema and runtime
+    /// disagreeing about what is valid.
+    ///
+    /// Only arity-0 variants are built here; a variant *with* a payload is a
+    /// constructor and is handled by [`Self::eval_call`].
     fn eval_ident(&mut self, name: &str, span: Span) -> EvalResult {
         if let Some(value) = self.env.get(name) {
             return Ok(value);
         }
         if let Some(function) = self.functions.get(name) {
             return Ok(Value::Function(function.clone()));
+        }
+        if let Some((enum_name, 0)) = self.variant_schema(name) {
+            return Ok(Value::Variant {
+                enum_name: Rc::from(enum_name.as_str()),
+                variant: Rc::from(name),
+                payload: Rc::new(Vec::new()),
+            });
+        }
+        if let Some((enum_name, arity)) = self.variant_schema(name) {
+            // A payload-carrying variant is a first-class constructor value of
+            // type `fn(payload) -> Enum` (ADR 0017), so the checker's `Ty::Fn`
+            // has a runtime counterpart.
+            return Ok(Value::Function(Rc::new(Closure::constructor(
+                &enum_name, name, arity,
+            ))));
         }
         Err(self.unsupported(format!("undefined name `{name}`"), span))
     }
@@ -651,11 +677,19 @@ impl Interpreter {
         if let Some(builtin) = builtins::lookup(&function.name) {
             return builtin(self, &args, span);
         }
+        if let Some((enum_name, variant, _arity)) = function.as_constructor() {
+            return Ok(Value::Variant {
+                enum_name: Rc::from(enum_name),
+                variant: Rc::from(variant),
+                payload: Rc::new(args),
+            });
+        }
         if self.depth >= MAX_CALL_DEPTH {
-            return Err(self.unsupported(
+            return Err(Box::new(Failure::new(
+                FailureKind::StackOverflow,
                 format!("call depth exceeded {MAX_CALL_DEPTH} (possible infinite recursion)"),
                 span,
-            ));
+            )));
         }
 
         let names = function.param_names();
@@ -706,9 +740,9 @@ impl Interpreter {
     fn call_env(&self, function: &Rc<Closure>) -> Env {
         match &function.callable {
             crate::function::Callable::Lambda { captured, .. } => captured.clone(),
-            crate::function::Callable::Named(_) | crate::function::Callable::Builtin => {
-                self.global.clone()
-            }
+            crate::function::Callable::Named(_)
+            | crate::function::Callable::Builtin
+            | crate::function::Callable::Constructor { .. } => self.global.clone(),
         }
     }
 

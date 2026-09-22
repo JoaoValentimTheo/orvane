@@ -17,6 +17,15 @@ pub enum Callable {
     Named(Rc<FnDecl>),
     /// A builtin implemented in Rust (the prelude, SPEC §5.6).
     Builtin,
+    /// An enum variant constructor, callable and first class.
+    ///
+    /// `Circle` in `let f = Circle` is a value of type
+    /// `fn(Float) -> Shape`; calling it builds the variant (ADR 0017).
+    Constructor {
+        enum_name: Rc<str>,
+        variant: Rc<str>,
+        arity: usize,
+    },
     /// A lambda: parameters plus a body expression (which may be a block).
     Lambda {
         params: Rc<Vec<String>>,
@@ -79,7 +88,7 @@ impl Closure {
     pub fn block(&self) -> Option<&Block> {
         match &self.callable {
             Callable::Named(decl) => Some(&decl.body),
-            Callable::Lambda { .. } | Callable::Builtin => None,
+            Callable::Lambda { .. } | Callable::Builtin | Callable::Constructor { .. } => None,
         }
     }
 
@@ -88,11 +97,36 @@ impl Closure {
         matches!(self.callable, Callable::Builtin)
     }
 
+    /// Creates a variant-constructor closure.
+    pub fn constructor(enum_name: &str, variant: &str, arity: usize) -> Self {
+        Self {
+            name: Rc::from(variant),
+            arity,
+            callable: Callable::Constructor {
+                enum_name: Rc::from(enum_name),
+                variant: Rc::from(variant),
+                arity,
+            },
+        }
+    }
+
+    /// The constructor parts, when this is a variant constructor.
+    pub fn as_constructor(&self) -> Option<(&str, &str, usize)> {
+        match &self.callable {
+            Callable::Constructor {
+                enum_name,
+                variant,
+                arity,
+            } => Some((enum_name.as_ref(), variant.as_ref(), *arity)),
+            _ => None,
+        }
+    }
+
     /// The body expression of a lambda, when this is one.
     pub fn lambda_body(&self) -> Option<&Expr> {
         match &self.callable {
             Callable::Lambda { body, .. } => Some(body),
-            Callable::Named(_) | Callable::Builtin => None,
+            Callable::Named(_) | Callable::Builtin | Callable::Constructor { .. } => None,
         }
     }
 
@@ -101,9 +135,9 @@ impl Closure {
         match &self.callable {
             Callable::Named(decl) => decl.params.iter().map(|p| p.name.clone()).collect(),
             Callable::Lambda { params, .. } => params.as_ref().clone(),
-            // A builtin receives its arguments positionally; the names are
-            // never used for binding.
-            Callable::Builtin => Vec::new(),
+            // Builtins and constructors receive arguments positionally; the
+            // names are never used for binding.
+            Callable::Builtin | Callable::Constructor { .. } => Vec::new(),
         }
     }
 }
