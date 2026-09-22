@@ -1,0 +1,11 @@
+// orv: run %f
+fn adder(n: Int) -> fn(Int) -> Int {
+    let f: fn(Int) -> Int = (x) => x + n
+    return f
+}
+
+fn main() {
+    print(adder(10)(5))
+    let g: fn(Int) -> fn(Int) -> Int = a => (b) => a + b
+    print(g(1)(2))
+}

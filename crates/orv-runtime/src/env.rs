@@ -10,31 +10,65 @@ use std::rc::Rc;
 use crate::value::Value;
 
 /// A shared, mutable binding slot.
+///
+/// The cell is reference-counted so a closure and its defining scope can share
+/// the same binding: assigning to a captured `let mut` is visible to both
+/// (§5.3).
 #[derive(Clone, Debug)]
-pub struct Slot {
+pub struct Slot(Rc<RefCell<SlotData>>);
+
+#[derive(Debug)]
+struct SlotData {
     /// The current value.
-    pub value: Value,
+    value: Value,
     /// Whether `let mut` allowed assignment.
-    pub mutable: bool,
+    mutable: bool,
+}
+
+impl Slot {
+    /// Creates a slot holding `value`.
+    fn new(value: Value, mutable: bool) -> Self {
+        Slot(Rc::new(RefCell::new(SlotData { value, mutable })))
+    }
+
+    /// The current value.
+    fn value(&self) -> Value {
+        self.0.borrow().value.clone()
+    }
+
+    /// Whether the binding is assignable.
+    fn is_mutable(&self) -> bool {
+        self.0.borrow().mutable
+    }
+
+    /// Overwrites the value.
+    fn set(&self, value: Value) {
+        self.0.borrow_mut().value = value;
+    }
 }
 
 /// One lexical scope.
+///
+/// A scope is shared (via `Rc`) between the environment that created it and any
+/// closure that captured it, so its bindings outlive a `pop` on the defining
+/// environment. Interior mutability is needed because `define` inserts into a
+/// scope that may already be shared.
 #[derive(Debug, Default)]
 struct Scope {
     /// Insertion-ordered names, so anything that walks bindings is
     /// deterministic (§3.4).
-    order: Vec<Rc<str>>,
-    slots: HashMap<Rc<str>, Slot>,
+    order: RefCell<Vec<Rc<str>>>,
+    slots: RefCell<HashMap<Rc<str>, Slot>>,
 }
 
-/// A chain of scopes, shared by closures.
+/// A chain of scopes.
+///
+/// Each [`Env`] owns its own list of scope handles (an `Rc<RefCell<Vec<_>>>`),
+/// so [`push`](Env::push)/[`pop`](Env::pop) on one environment never affects a
+/// closure that captured a [`snapshot`](Env::snapshot) of it. The scopes and
+/// their binding cells are shared, so captured mutable bindings stay live.
 #[derive(Clone, Debug)]
-pub struct Env(Rc<RefCell<EnvData>>);
-
-#[derive(Debug)]
-struct EnvData {
-    scopes: Vec<Scope>,
-}
+pub struct Env(Rc<RefCell<Vec<Rc<Scope>>>>);
 
 impl Default for Env {
     fn default() -> Self {
@@ -45,55 +79,60 @@ impl Default for Env {
 impl Env {
     /// Creates an environment with a single (global) scope.
     pub fn new() -> Self {
-        Self(Rc::new(RefCell::new(EnvData {
-            scopes: vec![Scope::default()],
-        })))
+        Self(Rc::new(RefCell::new(vec![Rc::new(Scope::default())])))
     }
 
-    /// Pushes a child scope onto the **same** chain.
+    /// Pushes a child scope onto **this** environment's chain.
     ///
     /// Returns the depth so the caller can pop exactly what it pushed.
     pub fn push(&self) -> usize {
-        let mut data = self.0.borrow_mut();
-        data.scopes.push(Scope::default());
-        data.scopes.len()
+        let mut scopes = self.0.borrow_mut();
+        scopes.push(Rc::new(Scope::default()));
+        scopes.len()
     }
 
     /// Pops the innermost scope, never the global one.
     pub fn pop(&self) -> usize {
-        let mut data = self.0.borrow_mut();
-        if data.scopes.len() > 1 {
-            data.scopes.pop();
+        let mut scopes = self.0.borrow_mut();
+        if scopes.len() > 1 {
+            scopes.pop();
         }
-        data.scopes.len()
+        scopes.len()
     }
 
-    /// Creates a child environment that shares nothing but the parent chain.
+    /// A detached environment holding the same scopes as this one.
     ///
-    /// Used for a closure's captured scope: the closure sees the bindings that
-    /// existed when it was created.
-    pub fn child(&self) -> Env {
-        Env::new()
+    /// Used for a closure's captured scope: the closure keeps seeing the
+    /// bindings that existed when it was created, even after the defining
+    /// environment pops its own frame. The scope handles (and therefore the
+    /// binding cells) are shared, so a captured `let mut` stays assignable.
+    pub fn snapshot(&self) -> Env {
+        Env(Rc::new(RefCell::new(self.0.borrow().clone())))
+    }
+
+    /// The innermost scope, if any.
+    fn innermost(&self) -> Option<Rc<Scope>> {
+        self.0.borrow().last().cloned()
     }
 
     /// Declares a binding in the innermost scope.
     pub fn define(&self, name: Rc<str>, value: Value, mutable: bool) {
-        let mut data = self.0.borrow_mut();
-        let Some(scope) = data.scopes.last_mut() else {
+        let Some(scope) = self.innermost() else {
             return;
         };
-        if !scope.slots.contains_key(&name) {
-            scope.order.push(name.clone());
+        let mut slots = scope.slots.borrow_mut();
+        if !slots.contains_key(&name) {
+            scope.order.borrow_mut().push(name.clone());
         }
-        scope.slots.insert(name, Slot { value, mutable });
+        slots.insert(name, Slot::new(value, mutable));
     }
 
     /// Looks a name up, innermost scope first.
     pub fn get(&self, name: &str) -> Option<Value> {
-        let data = self.0.borrow();
-        for scope in data.scopes.iter().rev() {
-            if let Some(slot) = scope.slots.get(name) {
-                return Some(slot.value.clone());
+        let scopes = self.0.borrow().clone();
+        for scope in scopes.iter().rev() {
+            if let Some(slot) = scope.slots.borrow().get(name) {
+                return Some(slot.value());
             }
         }
         None
@@ -112,13 +151,14 @@ impl Env {
     /// * `Err(())` when the name is not bound at all.
     #[allow(clippy::result_unit_err)]
     pub fn assign(&self, name: &str, value: Value) -> Result<bool, ()> {
-        let mut data = self.0.borrow_mut();
-        for scope in data.scopes.iter_mut().rev() {
-            if let Some(slot) = scope.slots.get_mut(name) {
-                if !slot.mutable {
+        let scopes = self.0.borrow().clone();
+        for scope in scopes.iter().rev() {
+            let slot = scope.slots.borrow().get(name).cloned();
+            if let Some(slot) = slot {
+                if !slot.is_mutable() {
                     return Ok(false);
                 }
-                slot.value = value;
+                slot.set(value);
                 return Ok(true);
             }
         }
@@ -127,10 +167,10 @@ impl Env {
 
     /// All names visible from here, innermost shadowing outer scopes.
     pub fn names(&self) -> Vec<Rc<str>> {
-        let data = self.0.borrow();
+        let scopes = self.0.borrow().clone();
         let mut seen: Vec<Rc<str>> = Vec::new();
-        for scope in data.scopes.iter().rev() {
-            for name in scope.order.iter().rev() {
+        for scope in scopes.iter().rev() {
+            for name in scope.order.borrow().iter().rev() {
                 if !seen.iter().any(|existing| existing == name) {
                     seen.push(name.clone());
                 }
@@ -141,7 +181,7 @@ impl Env {
 
     /// Current nesting depth.
     pub fn depth(&self) -> usize {
-        self.0.borrow().scopes.len()
+        self.0.borrow().len()
     }
 }
 
