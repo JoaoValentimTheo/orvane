@@ -38,9 +38,16 @@ comparação, `data`/`enum`/`match`, `try`, `as`, o prelude de §5.6
 
 **O que ainda não existe:** `intent`/`how` (o núcleo da proposta, M6),
 interoperabilidade com Python (`use py`, M7), `orv test`/`fmt`/`repl`,
-módulos multi-arquivo, generics e interpolação *avaliada* em strings (`{expr}`
-é mantido literal na alpha). O recorte está no
+módulos multi-arquivo e generics. O recorte está no
 [ADR 0012](docs/adr/0012-alpha-scope.md).
+
+> **Atenção — duas limitações visíveis na 0.1.0-alpha:**
+> 1. **Strings com `{expr}` imprimem o texto literal**, não o valor:
+>    `print("n = {len(xs)}")` imprime `n = {len(xs)}`. A interpolação avaliada
+>    chega em milestone futuro ([ADR 0018](docs/adr/0018-alpha-scope-limits.md)).
+> 2. **Atribuir a campo de `data` não é suportado**: `u.age = 2` é o erro
+>    `E0231`. Reconstrua o valor (`let u2 = User(name: u.name, age: 2)`).
+>    Mutação de elemento de lista/mapa (`xs[0] = 1`, `m["k"] = 1`) funciona.
 
 Nada aqui é "1.0": a alpha valida lexer, parser, sema e runtime de ponta a
 ponta antes de investir no planner. O detalhe feature-a-feature (com o teste

@@ -1,0 +1,41 @@
+// Enum só com variantes sem payload: construção bare, comparação, campo de
+// `data`, `match` e uso em coleção. Cobre o caso que a auditoria de
+// estabilização encontrou quebrado no runtime (ADR 0017).
+enum Status { Active, Paused, Done }
+
+data Task {
+    title: Str,
+    status: Status,
+}
+
+fn describe(s: Status) -> Str {
+    match s {
+        Active => "running",
+        Paused => "paused",
+        Done => "finished",
+    }
+}
+
+fn main() {
+    // Construção bare e comparação.
+    let s = Active
+    print(s)
+    print(s == Active)
+    print(s == Done)
+
+    // Como campo de `data`.
+    let task = Task(title: "ship 0.1.0", status: s)
+    print(task)
+    print(task.status == Active)
+
+    // Dentro de `match`, via função.
+    print(describe(s))
+    print(describe(Paused))
+
+    // Dentro de uma lista, iterando.
+    let all = [Active, Paused, Done]
+    print(len(all))
+    for status in all {
+        print(describe(status))
+    }
+}

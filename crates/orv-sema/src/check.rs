@@ -551,9 +551,30 @@ impl Checker {
                     // The undefined name is already reported by `check_expr`.
                 }
             },
-            // `u.field = v` and `xs[i] = v` are allowed: the place is mutable
-            // even when the binding is not (§5.2 `lvalue`).
-            ExprKind::Field { .. } | ExprKind::Index { .. } | ExprKind::OptionalField { .. } => {}
+            // `xs[i] = v` is allowed: the place is mutable even when the
+            // binding is not (§5.2 `lvalue`), and the runtime supports it.
+            ExprKind::Index { .. } => {}
+            // Assigning to a field of a `data` value is **not supported in
+            // 0.1.0-alpha** (ADR 0012, ADR 0018): the runtime cannot mutate a
+            // `Value::Data` behind its `Rc`. Rejecting here keeps sema and
+            // runtime from disagreeing about what is a valid program — the
+            // same class of bug this sprint fixed for enum variants.
+            ExprKind::Field { name, .. } => {
+                self.error(
+                    "E0231",
+                    format!(
+                        "assigning to field `{name}` is not supported in 0.1.0-alpha; rebuild the value instead"
+                    ),
+                    statement_span,
+                );
+            }
+            ExprKind::OptionalField { name, .. } => {
+                self.error(
+                    "E0231",
+                    format!("cannot assign to optional field `{name}`"),
+                    statement_span,
+                );
+            }
             _ => {
                 self.error("E0230", "invalid assignment target", statement_span);
             }
