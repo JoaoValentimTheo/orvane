@@ -16,8 +16,29 @@ Ritmo de correção, zero feature nova. Changelog: [`CHANGELOG.md`](../CHANGELOG
 |---|---|---|
 | Closure perdia capturas quando o frame que a definiu retornava (`R0010: undefined name`) | `a_returned_lambda_keeps_its_captured_parameters`, `a_nested_lambda_closes_over_the_outer_lambda_parameter`, `a_lambda_returned_from_a_function_still_sees_later_outer_mutation`; golden `matrix_m28_lambda_from_frame` | 0019 |
 | Chave de mapa fora de `{Int, Str, Bool}` passava na sema e falhava no runtime (`R0010`) | `a_map_key_that_is_not_int_str_or_bool_reports_e0301`, `a_float_map_key_reports_e0301`, `int_str_and_bool_map_keys_are_accepted`; golden `matrix_m29_map_int_bool_keys` | — |
+| Nome de variante declarado por dois `enum` divergia entre `check` e `run` (ordem de hash) | `a_variant_name_shared_by_two_enums_reports_e0202`, `distinct_variant_names_in_distinct_enums_are_fine` | 0020 |
 | Job `miri` do `Deep tests` nunca rodava (toolchain errada + isolamento) | execução manual do workflow, 262 testes do lexer sob Miri | — |
 | `sema_runtime_agreement.rs` não gerava tuplas/lambdas/opcionais/coleções de tipo de usuário | 4 proptests novos (`tuple_agrees`, `lambda_agrees`, `optional_agrees`, `user_type_collections_agree`) | — |
+
+### Pendências abertas da auditoria 0.1.1 (STOP CONDITION (b) — NÃO corrigidas)
+
+A auditoria parou ao achar **5 bugs da classe sema↔runtime** numa sessão. Os dois
+abaixo ficaram **registrados, não corrigidos** (o limite era 3 por categoria):
+
+1. **`break`/`continue` fora de loop** — `orv check` aceita, `orv run` falha com
+   `R0010: break or continue outside a loop`. Repro: `fn main() { break }`.
+   Regra provável: `E0303` (não é válido aqui) ou código novo; o sema precisa
+   rastrear profundidade de loop.
+2. **`break` dentro de lambda quebra o loop do chamador** — pior que o anterior
+   porque é silencioso (sem erro, saída errada). Repro:
+   `for i in 0..3 { let f: fn() -> () = () => { break } f() }` imprime só a
+   primeira iteração e sai do loop. O `Control::Break` vaza da closure para o
+   loop do chamador. Regra provável: `break`/`continue` não podem atravessar a
+   fronteira de uma lambda (ou o `pending`/controle deve ser confinado à chamada).
+
+Ambos compartilham a causa (o sema não rastreia contexto de loop e o runtime deixa
+o controle atravessar a fronteira da chamada). Próximo passo exato: tratar como
+um item só, no início de 0.1.2, com ADR curta sobre escopo de `break`/`continue`.
 
 ## Estabilização 0.1.0 (`fix/0.1.0-stabilization`)
 
