@@ -184,6 +184,24 @@ fn duplicate_parameter_reports_e0202() {
 }
 
 #[test]
+fn a_variant_name_shared_by_two_enums_reports_e0202() {
+    // Variant names resolve globally (ADR 0015); `V` in two enums would be
+    // ambiguous, so it is rejected (ADR 0020). Before the fix the sema picked
+    // one owner (hash order) and the runtime picked another, so `V("hello")`
+    // passed the check and failed at run time with a bogus E0301.
+    assert_eq!(
+        codes("enum A {\n    V(Int),\n}\nenum B {\n    V(Str),\n}\n"),
+        vec!["E0202"]
+    );
+}
+
+#[test]
+fn distinct_variant_names_in_distinct_enums_are_fine() {
+    ok("enum A {\n    A1,\n}\n\nenum B {\n    B1,\n}\n\n\
+         fn main() {\n    let a = A1\n    let b = B1\n    print(a)\n    print(b)\n}\n");
+}
+
+#[test]
 fn shadowing_in_an_inner_scope_is_allowed() {
     ok_main("let x = 1\nwhile false {\n    let x = \"ok\"\n    print(x)\n}");
 }
