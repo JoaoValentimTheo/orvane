@@ -236,6 +236,7 @@ name = "orv-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "orv-runtime",
  "orv-sema",
  "orv-syntax",
 ]
@@ -254,6 +255,11 @@ dependencies = [
 [[package]]
 name = "orv-runtime"
 version = "0.1.0"
+dependencies = [
+ "orv-sema",
+ "orv-syntax",
+ "proptest",
+]
 
 [[package]]
 name = "orv-sema"
@@ -270,6 +276,16 @@ dependencies = [
  "ariadne",
  "proptest",
  "thiserror",
+]
+
+[[package]]
+name = "orv-tools"
+version = "0.1.0"
+dependencies = [
+ "orv-runtime",
+ "orv-sema",
+ "orv-syntax",
+ "proptest",
 ]
 
 [[package]]

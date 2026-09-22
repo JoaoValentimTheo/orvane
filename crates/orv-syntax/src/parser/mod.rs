@@ -23,7 +23,7 @@ mod types;
 use crate::ast::Program;
 use crate::diagnostic::Diagnostic;
 use crate::diagnostics::Diagnostics;
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{Keyword, Token, TokenKind};
 use crate::span::Span;
 
 /// The parser state while walking the token stream.
@@ -148,6 +148,23 @@ impl<'a> Parser<'a> {
     pub(crate) fn skip_newlines(&mut self) {
         while self.kind() == &TokenKind::Newline {
             self.bump();
+        }
+    }
+
+    /// Skips newlines only when the next real token is `else`.
+    ///
+    /// Used by `if`: a newline before `else` is part of the construct, but the
+    /// same newline may also terminate the statement, so it must not be eaten
+    /// when no `else` follows.
+    pub(crate) fn skip_newlines_if_else_follows(&mut self) {
+        let mut offset = 0;
+        while self.peek(offset).kind == TokenKind::Newline {
+            offset += 1;
+        }
+        if self.peek(offset).kind == TokenKind::Kw(Keyword::Else) {
+            for _ in 0..offset {
+                self.bump();
+            }
         }
     }
 

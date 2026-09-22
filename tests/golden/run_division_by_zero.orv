@@ -1,0 +1,6 @@
+// orv: run %f
+// exit: 1
+// R0001: divisão por zero é Failure, não panic (SPEC §5.3).
+fn main() {
+    print(1 / 0)
+}

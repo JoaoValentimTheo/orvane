@@ -1,0 +1,70 @@
+name: Deep tests (0.1.1 instrumentation)
+
+# Non-blocking, high-volume run of the property tests plus a byte-level fuzz
+# pass over the front end. This is the 0.1.1 work queue: run it, fix what it
+# finds, repeat. See docs/STATUS.md for the manual commands.
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 03:00 UTC.
+    - cron: "0 3 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  proptest-deep:
+    name: proptest (high case count)
+    runs-on: ubuntu-latest
+    # Not required for a merge: this job is for finding 0.1.1 work.
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Each layer's "never panics" property test, with a much larger case
+      # budget than CI's default (256 cases).
+      - name: lexer / parser proptests
+        env:
+          PROPTEST_CASES: "200000"
+        run: cargo test --locked -p orv-syntax --lib -- --nocapture
+      - name: sema proptests
+        env:
+          PROPTEST_CASES: "200000"
+        run: cargo test --locked -p orv-sema --lib -- --nocapture
+      - name: runtime proptests
+        env:
+          PROPTEST_CASES: "200000"
+        run: cargo test --locked -p orv-runtime -- --nocapture
+
+  fuzz-front-end:
+    name: fuzz (arbitrary bytes into lex/parse/run)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # `orv-tools` is a tiny in-repo harness (not a published crate): it feeds
+      # arbitrary bytes through lex -> parse -> check -> run and asserts nothing
+      # panics. A real cargo-fuzz target would need nightly; this keeps the job
+      # on stable while covering the same surface.
+      - name: run the byte-level harness
+        run: cargo run --locked --release -p orv-tools --bin fuzz-bytes -- 200000
+
+  miri-lexer:
+    name: miri (lexer, slow)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      # The lexer is the layer with the most byte-level arithmetic; Miri catches
+      # out-of-bounds slicing that a release run might not.
+      - run: cargo miri test -p orv-syntax --lib

@@ -16,6 +16,6 @@ pub mod ty;
 
 pub use check::{CheckResult, Checker, EnumVariant, UserType, check};
 pub use scopes::{Scopes, Symbol, SymbolKind};
-pub use ty::Ty;
+pub use ty::{Ty, TypeProblem, resolve_type};
 
 pub use orv_syntax::Diagnostic;
