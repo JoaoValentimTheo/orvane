@@ -137,17 +137,15 @@ em `orv-sema/src/check.rs` e procurei o branch espelhado em
 documentação". O item 9 pedia para relatar também as que virassem documentação:
 não houve nenhuma.
 
-**Na 0.1.1** a mesma varredura, dirigida a combinações cruzadas, achou mais 2
-divergências da mesma classe (chave de mapa e captura de closure), ambas
-corrigidas e agora cobertas pelo gerador de `sema_runtime_agreement.rs`.
-
-**Pendências abertas** (STOP CONDITION (b): 5 bugs da classe numa sessão; os 2
-abaixo ficaram registrados, não corrigidos — ver `docs/STATUS.md`):
+**Na 0.1.1** a mesma varredura, dirigida a combinações cruzadas, achou mais 4
+divergências da mesma classe (chave de mapa, captura de closure, nome de variante
+duplicado e escopo de `break`/`continue`), todas corrigidas e cobertas por
+regressão dirigida.
 
 | Ponto na sema | Espelho no runtime | Situação |
 |---|---|---|
-| `Break`/`Continue` sem rastrear contexto de loop | runtime recusa com `R0010` | **divergia aberta** — `fn main() { break }` passa no `check` e falha no `run` |
-| `Break` dentro de lambda | `Control::Break` atravessa a fronteira da chamada | **divergia aberta** — quebra o loop do chamador silenciosamente |
+| `Break`/`Continue` sem rastrear contexto de loop | runtime recusa com `R0010` | **era bug** → sema recusa (`E0303`, ADR 0021) |
+| `Break` dentro de lambda | `Control::Break` atravessava a fronteira da chamada | **era bug** → sema recusa (`E0303`) e o runtime confina `pending` à chamada (ADR 0021) |
 
 
 

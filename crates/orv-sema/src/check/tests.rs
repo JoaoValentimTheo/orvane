@@ -101,6 +101,52 @@ fn accepts_while_and_for() {
 }
 
 #[test]
+fn accepts_break_and_continue_inside_a_loop() {
+    ok_main(
+        "for i in 0..10 {\n    if i == 5 { break }\n    if i == 2 { continue }\n    print(i)\n}",
+    );
+}
+
+#[test]
+fn break_outside_a_loop_reports_e0303() {
+    assert_eq!(codes("fn main() {\n    break\n}\n"), vec!["E0303"]);
+}
+
+#[test]
+fn continue_outside_a_loop_reports_e0303() {
+    assert_eq!(codes("fn main() {\n    continue\n}\n"), vec!["E0303"]);
+}
+
+#[test]
+fn a_break_in_a_lambda_inside_a_loop_reports_e0303() {
+    // Control flow cannot cross a call boundary (ADR 0021): the lambda body
+    // starts with no enclosing loop, so `break` there is `E0303`. Before the
+    // fix the checker accepted it and the runtime silently ended the caller's
+    // loop after the first iteration.
+    assert_eq!(
+        codes(
+            "fn main() {\n    for i in 0..3 {\n        let f: fn() -> () = () => { break }\n        f()\n    }\n}\n"
+        ),
+        vec!["E0303"]
+    );
+}
+
+#[test]
+fn a_break_in_a_function_called_from_a_loop_reports_e0303() {
+    assert_eq!(
+        codes("fn f() {\n    break\n}\n\nfn main() {\n    for i in 0..3 { f() }\n}\n"),
+        vec!["E0303"]
+    );
+}
+
+#[test]
+fn a_loop_inside_a_lambda_is_fine() {
+    ok_main(
+        "let f: fn() -> () = () => {\n    for i in 0..10 {\n        if i == 2 { break }\n    }\n}\nf()",
+    );
+}
+
+#[test]
 fn accepts_data_construction() {
     ok(
         "data User {\n    name: Str,\n    age: Int,\n    email: Str? = none,\n}\n\nfn main() {\n    let u = User(name: \"Mel\", age: 30)\n    print(u.name)\n}\n",

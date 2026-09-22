@@ -1,0 +1,15 @@
+// orv: run %f
+fn main() {
+    for i in 0..10 {
+        let f: fn() -> () = () => {
+            for j in 0..10 {
+                if j == 2 { break }
+                print(j)
+            }
+        }
+        f()
+        if i == 1 { break }
+        if i == 0 { continue }
+    }
+    print("end")
+}

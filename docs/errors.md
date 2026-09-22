@@ -104,7 +104,7 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 |---|---|---|---|
 | `E0301` | tipos incompatíveis | `let x: Int = "s"` · `"a" - "b"` · chave de mapa fora de `{Int, Str, Bool}` | **M3** (alpha) |
 | `E0302` | aridade incorreta | `f(1, 2)` com `f(a: Int)` · variant com nº errado de campos | **M3** (alpha) |
-| `E0303` | não é chamável/iterável/indexável | `let x = 1` + `x()` · `x[0]` | **M3** (alpha) |
+| `E0303` | não é chamável/iterável/indexável; `break`/`continue` fora de loop (ADR 0021) | `let x = 1` + `x()` · `x[0]` · `break` fora de loop | **M3** (alpha) |
 | `E0304` | campo inexistente | `u.age` onde `data User { name: Str }` | **M3** (alpha) |
 | `E0305` | opcional não tratado | `let a: Int = opt_int` | M5 |
 | `E0310` | lambda sem contexto de tipo | `let f = x => x` | **M3** (alpha) |

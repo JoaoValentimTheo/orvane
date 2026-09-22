@@ -695,6 +695,10 @@ impl Interpreter {
         let names = function.param_names();
         let call_env = self.call_env(function);
         let previous_env = std::mem::replace(&mut self.env, call_env);
+        // Control flow is confined to the call: a `break`/`continue` parked by
+        // the callee's body must never be read by the caller's loop (ADR 0021).
+        // The caller's own pending control is saved and restored untouched.
+        let caller_pending = self.pending.take();
         self.env.push();
         for (name, value) in names.iter().zip(args) {
             self.env.define(Rc::from(name.as_str()), value, false);
@@ -716,6 +720,11 @@ impl Interpreter {
             },
         };
 
+        // Anything the callee parked is the callee's own control flow; it has
+        // nowhere to go at a call boundary.
+        let leaked = self.pending.take();
+        self.pending = caller_pending;
+
         self.depth = self.depth.saturating_sub(1);
         self.frames.pop();
         self.env.pop();
@@ -723,6 +732,10 @@ impl Interpreter {
 
         match outcome {
             // A `return` inside the body is the function's value.
+            Ok(_) if leaked.is_some() => Err(self.unsupported(
+                "`break` or `continue` cannot leave the function that contains it",
+                span,
+            )),
             Ok(Control::Return(value) | Control::Value(value)) => Ok(value),
             // `break`/`continue` outside a loop cannot leave a function; the
             // checker rejects it, and the runtime reports instead of panicking.

@@ -23,6 +23,21 @@ depois.
   recusados pelo runtime com `R0010`. A sema agora reporta `E0301`
   (`is_valid_map_key`). Regressão em `check/tests.rs` e golden
   `matrix_m29_map_int_bool_keys`.
+- **Nome de variante declarado por dois `enum` divergia entre `check` e `run`.**
+  `enum A { V(Int) }` + `enum B { V(Str) }` deixava `V("hello")` passar no `check`
+  e falhar no `run` (a sema e o runtime escolhiam donos diferentes, por ordem de
+  hash). Nome de variante agora é único entre enums (`E0202`, ADR 0020).
+  Regressão: `a_variant_name_shared_by_two_enums_reports_e0202`.
+- **`break`/`continue` fora de loop passava no `check` e falhava no `run` com
+  `R0010`.** A sema agora rastreia profundidade de loop e reporta `E0303`
+  (ADR 0021). Regressão: `break_outside_a_loop_reports_e0303`,
+  `continue_outside_a_loop_reports_e0303`.
+- **`break` dentro de lambda encerrava o loop do chamador, silenciosamente.** O
+  `Control::Break` produzido na closure era estacionado em `pending` e relido
+  pelo loop do chamador. A sema recusa (`E0303`) e o runtime confina `pending` à
+  chamada (ADR 0021). Regressão: `a_break_in_a_lambda_inside_a_loop_reports_e0303`
+  (sema), `a_break_inside_a_lambda_cannot_leave_the_call` e
+  `a_loop_inside_a_lambda_still_works` (runtime); golden `check_break_in_lambda`.
 - **O job `miri` do workflow `Deep tests` nunca rodava.** `dtolnay/rust-toolchain@nightly`
   instalava nightly, mas `rust-toolchain.toml` fixa `stable`, então `cargo miri`
   resolvia para a toolchain errada e abortava com "the 'miri' component ... is not

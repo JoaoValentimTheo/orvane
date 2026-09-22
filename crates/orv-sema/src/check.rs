@@ -85,6 +85,11 @@ pub struct Checker {
     /// Only used by lambdas (§5.3: a lambda infers from the expected type); it
     /// is cleared as soon as the expression is done.
     expected: Option<Ty>,
+    /// How many `while`/`for` bodies enclose the statement being checked.
+    ///
+    /// `break`/`continue` are only valid here (> 0). A `fn`/lambda body starts
+    /// at 0, because control flow cannot cross a call boundary (ADR 0021).
+    loop_depth: usize,
 }
 
 impl Default for Checker {
@@ -105,6 +110,7 @@ impl Checker {
             declarations: Vec::new(),
             current_return: None,
             expected: None,
+            loop_depth: 0,
         }
     }
 
@@ -419,7 +425,11 @@ impl Checker {
         }
 
         let previous_return = self.current_return.replace(ret.clone());
+        // A function body is a new call boundary: `break`/`continue` cannot
+        // cross it (ADR 0021).
+        let previous_loop_depth = std::mem::replace(&mut self.loop_depth, 0);
         let body = self.check_block(&decl.body);
+        self.loop_depth = previous_loop_depth;
         self.current_return = previous_return;
         self.scopes.pop();
 
@@ -490,7 +500,9 @@ impl Checker {
             StmtKind::While { condition, body } => {
                 let cond = self.check_expr(condition);
                 self.require_bool(&cond, condition.span);
+                self.loop_depth += 1;
                 self.check_block(body);
+                self.loop_depth -= 1;
                 None
             }
             StmtKind::For {
@@ -502,10 +514,12 @@ impl Checker {
                 let element = self.element_type(&iterable_ty, iterable.span);
                 self.scopes.push();
                 self.declare_pattern(pattern, element, false);
+                self.loop_depth += 1;
                 let mut tail = None;
                 for statement in &body.statements {
                     tail = self.check_stmt(statement);
                 }
+                self.loop_depth -= 1;
                 self.scopes.pop();
                 tail
             }
@@ -522,7 +536,21 @@ impl Checker {
                 }
                 None
             }
-            StmtKind::Break | StmtKind::Continue => None,
+            StmtKind::Break | StmtKind::Continue => {
+                if self.loop_depth == 0 {
+                    let keyword = if matches!(statement.kind, StmtKind::Break) {
+                        "break"
+                    } else {
+                        "continue"
+                    };
+                    self.error(
+                        "E0303",
+                        format!("`{keyword}` is only valid inside a loop"),
+                        statement.span,
+                    );
+                }
+                None
+            }
             StmtKind::Fail(value) => {
                 self.check_expr(value);
                 None
@@ -821,7 +849,11 @@ impl Checker {
                 self.error("E0202", format!("duplicate parameter `{name}`"), span);
             }
         }
+        // A lambda body is a new call boundary: `break`/`continue` cannot reach
+        // the caller's loop (ADR 0021).
+        let previous_loop_depth = std::mem::replace(&mut self.loop_depth, 0);
         let found = self.check_expr_expected(body, Some((*expected_ret).clone()));
+        self.loop_depth = previous_loop_depth;
         self.scopes.pop();
 
         if !self.assignable(&expected_ret, &found) {

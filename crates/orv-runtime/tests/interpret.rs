@@ -206,6 +206,49 @@ fn main() {
     assert_eq!(run(source), "42\n");
 }
 
+#[test]
+fn a_break_inside_a_lambda_cannot_leave_the_call() {
+    // The sema rejects this (`E0303`), so the test bypasses the checker to
+    // exercise the runtime invariant directly: control flow is confined to a
+    // call (ADR 0021). Before the fix, the caller's `for` silently ended after
+    // the first iteration, printing `before` / `end` with no error.
+    let source = "\
+fn main() {
+    for i in 0..3 {
+        print(\"before\")
+        let f: fn() -> () = () => { break }
+        f()
+        print(\"after\")
+    }
+    print(\"end\")
+}
+";
+    let message = run_failure(source);
+    assert!(
+        message.contains("cannot leave the function"),
+        "expected a confinement failure, got {message:?}"
+    );
+}
+
+#[test]
+fn a_loop_inside_a_lambda_still_works() {
+    // The legitimate case: `break` belongs to the lambda's own loop and is
+    // consumed there, so it never reaches the call boundary.
+    let source = "\
+fn main() {
+    let stop: fn() -> () = () => {
+        for i in 0..10 {
+            if i == 2 { break }
+            print(i)
+        }
+    }
+    stop()
+    print(\"done\")
+}
+";
+    assert_eq!(run(source), "0\n1\ndone\n");
+}
+
 // --- Control flow -----------------------------------------------------------
 
 #[test]
