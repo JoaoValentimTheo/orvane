@@ -1,0 +1,12 @@
+// orv: run %f
+fn main() {
+    for i in 1..=3 {
+        print(i)
+    }
+    for i in 1..3 {
+        print(i)
+    }
+    for i in range(0, 3) {
+        print(i)
+    }
+}

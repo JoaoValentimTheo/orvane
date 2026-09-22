@@ -1,0 +1,13 @@
+// orv: run %f
+fn main() {
+    let x = 1
+    let y = 1.5
+    let s = "t"
+    let b = true
+    let n = none
+    print(x)
+    print(y)
+    print(s)
+    print(b)
+    print(n)
+}

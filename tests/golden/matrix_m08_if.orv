@@ -1,0 +1,10 @@
+// orv: run %f
+fn main() {
+    let x = if true { 1 } else { 2 }
+    print(x)
+    let y = if false { 1 } else if true { 2 } else { 3 }
+    print(y)
+    if true {
+        print("no else")
+    }
+}

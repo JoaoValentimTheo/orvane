@@ -1,0 +1,11 @@
+// orv: run %f
+fn main() {
+    let m = #{"a": 1, "b": 2}
+    let e = #{}
+    print(len(m))
+    print(m["a"])
+    print(len(e))
+    let mut mm = #{"k": 1}
+    mm["k"] = 2
+    print(mm["k"])
+}

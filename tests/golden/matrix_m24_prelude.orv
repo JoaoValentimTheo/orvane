@@ -1,0 +1,11 @@
+// orv: run %f
+fn main() {
+    print(str(42))
+    print(int("7"))
+    print(float(3))
+    print(len("abc"))
+    print(len([1, 2]))
+    assert(true)
+    print(Ok(1))
+    print(Err("bad"))
+}
