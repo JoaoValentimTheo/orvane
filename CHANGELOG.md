@@ -3,7 +3,7 @@
 Todas as mudanças relevantes por versão. O formato segue "Keep a Changelog"
 (https://keepachangelog.com/pt-BR/1.1.0/) e o versionamento é o de `Cargo.toml`.
 
-## [0.1.1] — correções, sem feature nova
+## [0.1.1] - 2026-09-22
 
 Sprint `fix-0.1.1`. Ritmo de correção: nada aqui adiciona capacidade nova à
 linguagem. Toda mudança de comportamento tem teste que falha antes e passa
