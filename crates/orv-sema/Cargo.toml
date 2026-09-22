@@ -8,3 +8,7 @@ repository.workspace = true
 description = "Orvane crate orv-sema."
 
 [dependencies]
+orv-syntax.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

@@ -13,4 +13,5 @@ path = "src/main.rs"
 
 [dependencies]
 orv-syntax.workspace = true
+orv-sema.workspace = true
 clap.workspace = true

@@ -33,6 +33,11 @@ pub struct Cli {
 pub enum Command {
     /// Print the Orvane version.
     Version,
+    /// Type-check a file without running it.
+    Check {
+        /// The `.orv` file to check.
+        file: PathBuf,
+    },
     /// Debug: dump the token stream of a file.
     #[command(hide = true)]
     Tokens {
@@ -79,6 +84,7 @@ pub fn run() -> ExitCode {
         },
         Command::Tokens { file } => crate::tokens::run(&file),
         Command::Ast { file } => crate::ast::run(&file),
+        Command::Check { file } => crate::check::run(&file),
     };
     ExitCode::from(outcome.exit_code())
 }

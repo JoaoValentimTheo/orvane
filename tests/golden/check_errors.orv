@@ -1,0 +1,9 @@
+// orv: check %f
+// exit: 1
+// Três erros independentes: tipo, nome indefinido e atribuição a imutável.
+fn main() {
+    let x: Int = "s"
+    let y = 1
+    y = 2
+    print(nope)
+}
