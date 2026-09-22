@@ -1,0 +1,11 @@
+// orv: ast %f
+// §A1 FizzBuzz: for, range inclusivo, if/else if encadeado em várias linhas.
+fn main() {
+    for i in 1..=15 {
+        let out = if i % 15 == 0 { "FizzBuzz" }
+                  else if i % 3 == 0 { "Fizz" }
+                  else if i % 5 == 0 { "Buzz" }
+                  else { str(i) }
+        print(out)
+    }
+}

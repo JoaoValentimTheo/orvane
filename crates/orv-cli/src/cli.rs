@@ -39,6 +39,12 @@ pub enum Command {
         /// The `.orv` file to lex.
         file: PathBuf,
     },
+    /// Debug: dump the parsed AST of a file.
+    #[command(hide = true)]
+    Ast {
+        /// The `.orv` file to parse.
+        file: PathBuf,
+    },
 }
 
 /// How a subcommand finished, mapped to the SPEC §10 exit codes.
@@ -72,6 +78,7 @@ pub fn run() -> ExitCode {
             Err(_) => SubcommandOutcome::Usage,
         },
         Command::Tokens { file } => crate::tokens::run(&file),
+        Command::Ast { file } => crate::ast::run(&file),
     };
     ExitCode::from(outcome.exit_code())
 }

@@ -49,6 +49,17 @@ diagnóstico, um token que cobre o trecho lido: `Str(parts)` com as partes já
 lidas para `E0002`/`E0004`/`E0006`, e `Int(0)`/`Float(0.0)` para `E0005`. A
 stream continua cobrindo o arquivo; a validade é decidida pelos diagnósticos.
 
+Notas de comportamento (M2):
+
+- `E0102` cobre "faltou algo": `)`, `]`, `}`, `,`, `:`, `=>`, `=`, um operando, um
+  tipo, um nome. A recuperação sincroniza no próximo `Newline`/`}` e continua, de
+  modo que **um erro por statement**, não uma cascata.
+- `E0104` existe para que entrada patológica não dê estouro de pilha: o parser é
+  recursive-descent e o limite é 256 níveis (ADR 0013).
+- `E0105` é a recusa explícita do que está **fora do alpha** (ADR 0012):
+  `intent`/`how`/`test`/`use py`/`pub data`/`pub enum`. A declaração inteira é
+  pulada, então sai um diagnóstico por causa, não um por linha do corpo.
+
 ### Ordem e supressão de diagnósticos (ADR 0008, emenda do M2)
 
 Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
@@ -66,9 +77,11 @@ Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
 
 | Código | Mensagem | Exemplo mínimo | Status |
 |---|---|---|---|
-| `E0101` | token inesperado | `fn () {}` | M2 |
-| `E0102` | esperado X, encontrado Y | `let = 1` · `1.2.3` (esperado identificador após `.`) | M2 |
-| `E0103` | bloco não fechado | `fn main() {` | M2 |
+| `E0101` | token inesperado | `1` no nível de item | **M2** |
+| `E0102` | esperado X, encontrado Y | `let = 1` · `1.2.3` · `f(1` | **M2** |
+| `E0103` | bloco não fechado | `fn main() {` | M2 (via `E0102` hoje) |
+| `E0104` | aninhamento profundo demais | `((((…1…))))` com 1000 níveis | **M2** |
+| `E0105` | construção fora do alpha | `intent f() -> Int` · `use py math` · `pub data D` | **M2** |
 
 ## E02xx — resolução
 

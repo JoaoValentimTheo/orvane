@@ -1,0 +1,5 @@
+// orv: ast %f
+// §4.1 Hello: uma função com uma chamada de print.
+fn main() {
+    print("Olá, Orvane!")
+}
