@@ -172,11 +172,21 @@ fn deeply_nested_interpolation_reports_e0104_instead_of_overflowing() {
     // The interpolation sub-parse shares the parser's recursion budget
     // (ADR 0013), so nesting here is bounded even though each level re-lexes
     // its own text. Without that, thousands of levels overflow the stack.
-    let parsed = parse(&nested_interpolation(3000));
+    let source = nested_interpolation(3000);
+    let parsed = parse(&source);
+    let index = parsed
+        .codes
+        .iter()
+        .position(|code| *code == "E0104")
+        .unwrap_or_else(|| panic!("expected the depth limit: {:?}", &parsed.codes[..5]));
+    // The diagnostic must point inside the interpolated string (line of
+    // `print`), not near offset 0: every nesting level's sub-lex shifts the
+    // embedded `StrPart::Expr` spans into file coordinates.
+    let print_at = source.find("print(").expect("print is in the source") as u32;
     assert!(
-        parsed.codes.contains(&"E0104"),
-        "expected the depth limit: {:?}",
-        &parsed.codes[..parsed.codes.len().min(5)]
+        parsed.spans[index].0 > print_at,
+        "E0104 span must sit inside the interpolated string: start {} vs print at {print_at}",
+        parsed.spans[index].0
     );
 }
 

@@ -899,6 +899,21 @@ impl Parser<'_> {
         }
         for token in &mut tokens {
             token.span = shift_span(token.span, span.start);
+            // A nested string token carries its own `StrPart::Expr` spans,
+            // produced by this same sub-lex relative to `src`. They must shift
+            // with the token, or the next level of interpolation would
+            // sub-parse against file-incorrect offsets (SPEC §5.1: the span is
+            // the byte range inside the file).
+            if let TokenKind::Str(parts) = &mut token.kind {
+                for part in parts {
+                    if let StrPart::Expr {
+                        span: part_span, ..
+                    } = part
+                    {
+                        *part_span = shift_span(*part_span, span.start);
+                    }
+                }
+            }
         }
 
         // The sub-parse shares this parser's nesting budget, so a deeply nested

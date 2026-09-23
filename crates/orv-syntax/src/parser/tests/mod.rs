@@ -15,6 +15,9 @@ pub(super) struct Parsed {
     pub program: Program,
     pub codes: Vec<&'static str>,
     pub messages: Vec<String>,
+    /// `(start, end)` byte ranges of each diagnostic's primary span, in the
+    /// same order as `codes`.
+    pub spans: Vec<(u32, u32)>,
     pub has_errors: bool,
 }
 
@@ -33,6 +36,10 @@ pub(super) fn parse(text: &str) -> Parsed {
     let diagnostics = result.diagnostics.as_slice();
     let codes = diagnostics.iter().map(|d| d.code).collect();
     let messages = diagnostics.iter().map(|d| d.message.clone()).collect();
+    let spans = diagnostics
+        .iter()
+        .map(|d| (d.primary.start, d.primary.end))
+        .collect();
     Parsed {
         program: result.program.unwrap_or(Program {
             items: Vec::new(),
@@ -40,6 +47,7 @@ pub(super) fn parse(text: &str) -> Parsed {
         }),
         codes,
         messages,
+        spans,
         has_errors,
     }
 }

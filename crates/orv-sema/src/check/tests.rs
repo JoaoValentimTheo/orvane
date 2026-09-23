@@ -171,6 +171,28 @@ fn an_undefined_name_inside_an_interpolation_reports_e0201() {
 }
 
 #[test]
+fn an_undefined_name_in_a_nested_interpolation_points_at_the_name() {
+    // The inner `{nope}` is sub-parsed from a token produced by an earlier
+    // sub-lex, so its embedded `StrPart::Expr` spans must be shifted into file
+    // coordinates too (SPEC §5.1). Without that, the diagnostic points near
+    // offset 0 of the file instead of at `nope`.
+    let text = "fn id(s: Str) -> Str { s }\nfn main() {\n    print(\"{id(\"{nope}\")}\")\n}\n";
+    let result = analyse(text);
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0201")
+        .expect("an E0201 for the undefined name");
+    let start = text.find("nope").expect("nope appears in the source") as u32;
+    assert_eq!(
+        (diagnostic.primary.start, diagnostic.primary.end),
+        (start, start + "nope".len() as u32),
+        "expected the span of `nope`, got {:?}",
+        diagnostic.primary
+    );
+}
+
+#[test]
 fn an_interpolation_of_any_type_is_a_str() {
     // Every value has a `Display`; no type restriction on the interpolation.
     ok_main("let xs = [1, 2]\nprint(\"{xs} {none} {true}\")");
