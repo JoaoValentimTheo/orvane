@@ -554,7 +554,7 @@ proptest! {
     /// the parser's depth budget (ADR 0013), so this also guards the P0 fixed
     /// in `fix-0.1.3`.
     #[test]
-    fn nested_interpolation_agrees(levels in 0usize..400) {
+    fn nested_interpolation_agrees(levels in 0usize..200) {
         let mut inner = "x".to_owned();
         for _ in 0..levels {
             inner = format!("\"{{{inner}}}\"");

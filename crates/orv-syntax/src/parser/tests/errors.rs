@@ -268,8 +268,12 @@ proptest! {
     /// embedded in a well-formed `print("...")` so the sub-parse is actually
     /// reached, and quotes/backslashes are neutralized so the outer string
     /// stays lexically clean.
+    ///
+    /// The text is length-bounded: an unbounded `String` makes each high-volume
+    /// case parse a huge expression, which dominates the whole 200k run for no
+    /// extra coverage of the *panic* property.
     #[test]
-    fn interpolation_subparse_never_panics(inner in any::<String>()) {
+    fn interpolation_subparse_never_panics(inner in ".{0,120}") {
         let safe: String = inner
             .chars()
             .map(|c| match c {
@@ -285,8 +289,13 @@ proptest! {
     /// stack: the sub-parse shares the parser's recursion budget, so any depth
     /// either parses or reports `E0104` (ADR 0013). Regression guard for the
     /// depth reset that used to make this abort.
+    ///
+    /// The range is bounded because each case builds and re-lexes a growing
+    /// string, and this runs at the project's high-volume case count. The deep
+    /// case (thousands of levels) has its own direct test, and the byte fuzzer
+    /// also generates these structures.
     #[test]
-    fn nested_interpolation_never_overflows(levels in 0usize..5000) {
+    fn nested_interpolation_never_overflows(levels in 0usize..80) {
         parse_bytes(&nested_interpolation(levels));
     }
 }
