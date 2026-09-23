@@ -607,20 +607,33 @@ impl Checker {
             // `xs[i] = v` is allowed: the place is mutable even when the
             // binding is not (§5.2 `lvalue`), and the runtime supports it.
             ExprKind::Index { .. } => {}
-            // Assigning to a field of a `data` value is **not supported in
-            // 0.1.0-alpha** (ADR 0012, ADR 0018): the runtime cannot mutate a
-            // `Value::Data` behind its `Rc`. Rejecting here keeps sema and
-            // runtime from disagreeing about what is a valid program — the
-            // same class of bug this sprint fixed for enum variants.
-            ExprKind::Field { name, .. } => {
-                self.error(
-                    "E0231",
-                    format!(
-                        "assigning to field `{name}` is not supported in 0.1.0-alpha; rebuild the value instead"
-                    ),
-                    statement_span,
-                );
-            }
+            // `u.age = 2` (ADR 0022): allowed when `u` is a `let mut` binding.
+            // Field write is a value-level mutation, so it needs the binding to
+            // be mutable, like reassigning a variable.
+            ExprKind::Field { receiver, name } => match &receiver.kind {
+                ExprKind::Ident(binding) => match self.scopes.lookup(binding) {
+                    Some(symbol) if !symbol.mutable => {
+                        self.error(
+                            "E0230",
+                            format!("cannot assign to a field of immutable `{binding}`"),
+                            statement_span,
+                        );
+                    }
+                    Some(_) => {}
+                    None => {
+                        // The undefined receiver is reported by `check_expr`.
+                    }
+                },
+                // Only a direct binding is a place the runtime can write back
+                // (ADR 0022); a nested receiver is out of scope.
+                _ => {
+                    self.error(
+                        "E0231",
+                        format!("assigning to field `{name}` is only supported on a variable"),
+                        statement_span,
+                    );
+                }
+            },
             ExprKind::OptionalField { name, .. } => {
                 self.error(
                     "E0231",
@@ -652,7 +665,7 @@ impl Checker {
     /// Infers the type of an expression, reporting what it can.
     pub fn check_expr(&mut self, expr: &Expr) -> Ty {
         match &expr.kind {
-            ExprKind::Literal(literal) => self.literal_type(literal, expr.span),
+            ExprKind::Literal(literal) => self.check_literal(literal, expr.span),
             ExprKind::Ident(name) => self.ident_type(name, expr.span),
             ExprKind::Paren(inner) => self.check_expr(inner),
             ExprKind::Block(block) => self.check_block(block).unwrap_or(Ty::Unit),
@@ -884,6 +897,23 @@ impl Checker {
             // rule 4 / ADR 0012), so a string is always `Str`.
             Literal::Str(_) => Ty::Str,
         }
+    }
+
+    /// The type of a literal used as an expression.
+    ///
+    /// A string is always `Str` (every value has a `Display`), but each
+    /// interpolated `{expr}` is type-checked here, in the scope where the
+    /// string appears (SPEC §5.1). A reference to an undefined name inside
+    /// `{}` reports the same `E0201` it would outside the string.
+    fn check_literal(&mut self, literal: &Literal, span: orv_syntax::Span) -> Ty {
+        if let Literal::Str(parts) = literal {
+            for part in parts {
+                if let orv_syntax::StrSegment::Expr { expr, .. } = part {
+                    self.check_expr(expr);
+                }
+            }
+        }
+        self.literal_type(literal, span)
     }
 
     /// The type of a name.

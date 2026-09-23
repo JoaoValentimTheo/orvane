@@ -157,6 +157,44 @@ fn moderately_nested_input_is_fine() {
     parse_ok(&source);
 }
 
+/// Builds `n` levels of nested string interpolation around `x`:
+/// `"{"{"{...x...}"}"}"`.
+fn nested_interpolation(levels: usize) -> String {
+    let mut inner = "x".to_owned();
+    for _ in 0..levels {
+        inner = format!("\"{{{inner}}}\"");
+    }
+    format!("fn main() {{\n    let x = 1\n    print({inner})\n}}\n")
+}
+
+#[test]
+fn deeply_nested_interpolation_reports_e0104_instead_of_overflowing() {
+    // The interpolation sub-parse shares the parser's recursion budget
+    // (ADR 0013), so nesting here is bounded even though each level re-lexes
+    // its own text. Without that, thousands of levels overflow the stack.
+    let source = nested_interpolation(3000);
+    let parsed = parse(&source);
+    let index = parsed
+        .codes
+        .iter()
+        .position(|code| *code == "E0104")
+        .unwrap_or_else(|| panic!("expected the depth limit: {:?}", &parsed.codes[..5]));
+    // The diagnostic must point inside the interpolated string (line of
+    // `print`), not near offset 0: every nesting level's sub-lex shifts the
+    // embedded `StrPart::Expr` spans into file coordinates.
+    let print_at = source.find("print(").expect("print is in the source") as u32;
+    assert!(
+        parsed.spans[index].0 > print_at,
+        "E0104 span must sit inside the interpolated string: start {} vs print at {print_at}",
+        parsed.spans[index].0
+    );
+}
+
+#[test]
+fn moderately_nested_interpolation_is_fine() {
+    parse_ok(&nested_interpolation(20));
+}
+
 #[test]
 fn the_parser_tolerates_an_empty_token_slice() {
     // `lex` never produces this, but the parser promises not to panic. An empty
@@ -233,5 +271,41 @@ proptest! {
     ) {
         let text: String = fragments.concat();
         parse_bytes(&text);
+    }
+
+    /// The interpolation sub-parse reads arbitrary text between `{}`; it must
+    /// never panic, whatever the content (SPEC §11 item 3). The inner text is
+    /// embedded in a well-formed `print("...")` so the sub-parse is actually
+    /// reached, and quotes/backslashes are neutralized so the outer string
+    /// stays lexically clean.
+    ///
+    /// The text is length-bounded: an unbounded `String` makes each high-volume
+    /// case parse a huge expression, which dominates the whole 200k run for no
+    /// extra coverage of the *panic* property.
+    #[test]
+    fn interpolation_subparse_never_panics(inner in ".{0,120}") {
+        let safe: String = inner
+            .chars()
+            .map(|c| match c {
+                '"' | '\\' | '{' | '}' | '\n' | '\r' => ' ',
+                other => other,
+            })
+            .collect();
+        let text = format!("fn main() {{\n    print(\"before {{{safe}}} after\")\n}}\n");
+        parse_bytes(&text);
+    }
+
+    /// Nested interpolation to an arbitrary depth must never overflow the
+    /// stack: the sub-parse shares the parser's recursion budget, so any depth
+    /// either parses or reports `E0104` (ADR 0013). Regression guard for the
+    /// depth reset that used to make this abort.
+    ///
+    /// The range is bounded because each case builds and re-lexes a growing
+    /// string, and this runs at the project's high-volume case count. The deep
+    /// case (thousands of levels) has its own direct test, and the byte fuzzer
+    /// also generates these structures.
+    #[test]
+    fn nested_interpolation_never_overflows(levels in 0usize..80) {
+        parse_bytes(&nested_interpolation(levels));
     }
 }

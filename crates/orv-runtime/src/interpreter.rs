@@ -179,7 +179,7 @@ impl Interpreter {
     /// Evaluates an expression.
     pub fn eval(&mut self, expr: &Expr) -> EvalResult {
         match &expr.kind {
-            ExprKind::Literal(literal) => Ok(literal_value(literal)),
+            ExprKind::Literal(literal) => self.eval_literal(literal),
             ExprKind::Ident(name) => self.eval_ident(name, expr.span),
             ExprKind::Paren(inner) => self.eval(inner),
             ExprKind::Block(block) => self.eval_block_as_expr(block),
@@ -270,6 +270,34 @@ impl Interpreter {
                 expr.span,
             )))),
         }
+    }
+
+    /// Evaluates a literal.
+    ///
+    /// A string concatenates its literal parts with the `Display` of each
+    /// interpolated `{expr}` (SPEC §5.1): `"{x}"` produces exactly what
+    /// `str(x)` produces, because both go through [`value::display`]. A raw
+    /// part (kept when the token had a lexical error) is emitted verbatim.
+    fn eval_literal(&mut self, literal: &Literal) -> EvalResult {
+        let Literal::Str(parts) = literal else {
+            return Ok(literal_value(literal));
+        };
+        let mut text = String::new();
+        for part in parts {
+            match part {
+                orv_syntax::StrSegment::Lit(lit) => text.push_str(lit),
+                orv_syntax::StrSegment::Expr { expr, .. } => {
+                    let value = self.eval(expr)?;
+                    text.push_str(&display(&value));
+                }
+                orv_syntax::StrSegment::Raw(src) => {
+                    text.push('{');
+                    text.push_str(src);
+                    text.push('}');
+                }
+            }
+        }
+        Ok(Value::str(text))
     }
 
     /// Evaluates an identifier: a local binding, a function, or a bare
@@ -508,18 +536,29 @@ impl Interpreter {
                 let index = self.eval(index)?;
                 self.assign_index(&container, &index, value, span)
             }
-            // A `data` value is immutable behind its `Rc`, and assigning to a
-            // field would need the binding that holds it. The alpha cannot
-            // express that, so it is reported rather than silently dropped.
+            // `data` has value semantics (ADR 0022): mutate the field on a copy
+            // of the binding's value and store it back. Only a direct binding is
+            // a supported place; nested receivers (`a.b.c = 1`) are not.
             ExprKind::Field { receiver, name } => {
-                let container = self.eval(receiver)?;
-                Err(self.unsupported(
-                    format!(
-                        "assigning to field `{name}` of a `{}` is not supported in 0.1.0-alpha",
-                        container.ty()
-                    ),
-                    span,
-                ))
+                let ExprKind::Ident(binding) = &receiver.kind else {
+                    return Err(self.unsupported(
+                        "assigning to a field is only supported on a variable",
+                        span,
+                    ));
+                };
+                let mut container = self
+                    .env
+                    .get(binding)
+                    .ok_or_else(|| self.unsupported(format!("undefined name `{binding}`"), span))?;
+                self.set_field(&mut container, name, value, span)?;
+                match self.env.assign(binding, container) {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(self.unsupported(
+                        format!("cannot assign to field of immutable `{binding}`"),
+                        span,
+                    )),
+                    Err(()) => Err(self.unsupported(format!("undefined name `{binding}`"), span)),
+                }
             }
             _ => Err(self.unsupported("invalid assignment target", span)),
         }
@@ -568,12 +607,39 @@ impl Interpreter {
                 name: type_name,
                 fields,
             } => fields
+                .borrow()
                 .iter()
                 .find(|(field, _)| field.as_ref() == name)
                 .map(|(_, value)| value.clone())
                 .ok_or_else(|| {
                     self.unsupported(format!("`{type_name}` has no field `{name}`"), span)
                 }),
+            other => Err(self.unsupported(format!("`{}` has no field `{name}`", other.ty()), span)),
+        }
+    }
+
+    /// Replaces one field of a `data` value in place.
+    ///
+    /// `container` is the value the binding holds (already a `data` copy), so
+    /// mutating it here and assigning it back gives value semantics (ADR 0022).
+    fn set_field(
+        &self,
+        container: &mut Value,
+        name: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), Box<Failure>> {
+        match container {
+            Value::Data { fields, .. } => {
+                let mut fields = fields.borrow_mut();
+                match fields.iter_mut().find(|(field, _)| field.as_ref() == name) {
+                    Some(slot) => {
+                        slot.1 = value;
+                        Ok(())
+                    }
+                    None => Err(self.unsupported(format!("no field `{name}`"), span)),
+                }
+            }
             other => Err(self.unsupported(format!("`{}` has no field `{name}`", other.ty()), span)),
         }
     }
@@ -793,10 +859,7 @@ impl Interpreter {
                 }
             }
         }
-        Ok(Some(Value::Data {
-            name: Rc::from(name),
-            fields: Rc::new(fields),
-        }))
+        Ok(Some(Value::data(name, fields)))
     }
 
     /// Builds an `enum` variant when `name` is one.
@@ -1161,13 +1224,12 @@ impl Interpreter {
     }
 }
 
-/// The value of a literal.
+/// The value of a literal in a *pattern* context.
 ///
-/// Interpolation parts are not evaluated in the alpha (ADR 0012): [`StrPart::Lit`]
-/// text is concatenated and `{...}` parts are kept verbatim, so the program's
-/// output still shows what was written.
-///
-/// [`StrPart::Lit`]: orv_syntax::StrPart::Lit
+/// Patterns do not evaluate interpolation: a `Literal::Str` here concatenates
+/// literal text and renders any interpolation part verbatim (its keys
+/// included), which is only ever compared for equality against the scrutinee.
+/// Expressions go through [`Interpreter::eval_literal`] instead.
 fn literal_value(literal: &Literal) -> Value {
     match literal {
         Literal::Int(value) => Value::Int(*value),
@@ -1177,8 +1239,8 @@ fn literal_value(literal: &Literal) -> Value {
             let mut text = String::new();
             for part in parts {
                 match part {
-                    orv_syntax::StrPart::Lit(lit) => text.push_str(lit),
-                    orv_syntax::StrPart::Expr { src, .. } => {
+                    orv_syntax::StrSegment::Lit(lit) => text.push_str(lit),
+                    orv_syntax::StrSegment::Raw(src) | orv_syntax::StrSegment::Expr { src, .. } => {
                         text.push('{');
                         text.push_str(src);
                         text.push('}');

@@ -154,6 +154,51 @@ fn accepts_data_construction() {
 }
 
 #[test]
+fn an_interpolation_checks_its_expression_in_scope() {
+    // A name used inside `{}` is an ordinary expression reference: it sees the
+    // variables in scope where the string appears.
+    ok_main("let x = 1\nprint(\"n={x}\")");
+}
+
+#[test]
+fn an_undefined_name_inside_an_interpolation_reports_e0201() {
+    // Same code as the same reference outside a string (SPEC §5.1): no new
+    // diagnostic just because it is inside `{}`.
+    assert_eq!(
+        codes("fn main() {\n    print(\"v={nope}\")\n}\n"),
+        vec!["E0201"]
+    );
+}
+
+#[test]
+fn an_undefined_name_in_a_nested_interpolation_points_at_the_name() {
+    // The inner `{nope}` is sub-parsed from a token produced by an earlier
+    // sub-lex, so its embedded `StrPart::Expr` spans must be shifted into file
+    // coordinates too (SPEC §5.1). Without that, the diagnostic points near
+    // offset 0 of the file instead of at `nope`.
+    let text = "fn id(s: Str) -> Str { s }\nfn main() {\n    print(\"{id(\"{nope}\")}\")\n}\n";
+    let result = analyse(text);
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0201")
+        .expect("an E0201 for the undefined name");
+    let start = text.find("nope").expect("nope appears in the source") as u32;
+    assert_eq!(
+        (diagnostic.primary.start, diagnostic.primary.end),
+        (start, start + "nope".len() as u32),
+        "expected the span of `nope`, got {:?}",
+        diagnostic.primary
+    );
+}
+
+#[test]
+fn an_interpolation_of_any_type_is_a_str() {
+    // Every value has a `Display`; no type restriction on the interpolation.
+    ok_main("let xs = [1, 2]\nprint(\"{xs} {none} {true}\")");
+}
+
+#[test]
 fn accepts_enum_and_match() {
     ok(
         "enum Shape { Circle(Float), Rect(Float, Float) }\n\nfn area(s: Shape) -> Float {\n    match s {\n        Circle(r) => 3.14159 * r * r,\n        Rect(w, h) => w * h,\n    }\n}\n\nfn main() {\n    print(area(Circle(1.0)))\n}\n",
@@ -269,14 +314,21 @@ fn compound_assignment_to_an_immutable_reports_e0230() {
 }
 
 #[test]
-fn assigning_to_a_field_is_rejected_as_out_of_scope() {
-    // ADR 0018: field assignment is not supported in 0.1.0-alpha. The sema
-    // rejects it (E0231) so it cannot accept a program the runtime refuses.
+fn assigning_to_a_field_requires_a_mutable_binding() {
+    // ADR 0022: `u.age = 2` is allowed when `u` is a `let mut` binding, but the
+    // binding itself must be mutable, so an immutable one is E0230.
     assert_eq!(
         codes(
             "data User {\n    age: Int,\n}\n\nfn main() {\n    let u = User(age: 1)\n    u.age = 2\n}\n"
         ),
-        vec!["E0231"]
+        vec!["E0230"]
+    );
+}
+
+#[test]
+fn assigning_to_a_field_of_a_mutable_binding_is_allowed() {
+    ok(
+        "data User {\n    age: Int,\n}\n\nfn main() {\n    let mut u = User(age: 1)\n    u.age = 2\n}\n",
     );
 }
 
@@ -285,6 +337,17 @@ fn assigning_to_an_optional_field_is_rejected() {
     assert_eq!(
         codes(
             "data User {\n    email: Str? = none,\n}\n\nfn main() {\n    let mut u = User()\n    u?.email = \"x\"\n}\n"
+        ),
+        vec!["E0231"]
+    );
+}
+
+#[test]
+fn assigning_to_a_nested_field_is_rejected() {
+    // ADR 0022: only a direct binding is a supported place.
+    assert_eq!(
+        codes(
+            "data Inner {\n    age: Int,\n}\ndata Outer {\n    i: Inner,\n}\n\nfn main() {\n    let mut o = Outer(i: Inner(age: 1))\n    o.i.age = 2\n}\n"
         ),
         vec!["E0231"]
     );

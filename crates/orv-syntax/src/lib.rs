@@ -17,8 +17,8 @@ pub mod span;
 
 pub use ast::{
     Arg, AssignOp, BinaryOp, Block, DataDecl, EnumDecl, Expr, ExprKind, FieldDecl, FnDecl, Item,
-    ItemKind, Literal, MatchArm, Param, Pattern, PatternKind, Program, Stmt, StmtKind, Type,
-    TypeKind, UnaryOp, UseDecl, VariantDecl,
+    ItemKind, Literal, MatchArm, Param, Pattern, PatternKind, Program, Stmt, StmtKind, StrSegment,
+    Type, TypeKind, UnaryOp, UseDecl, VariantDecl,
 };
 pub use diagnostic::{Diagnostic, Label, Severity};
 pub use diagnostics::Diagnostics;

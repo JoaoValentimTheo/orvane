@@ -60,6 +60,57 @@ aponta o arquivo em `tests/golden/`. `examples/` tem os programas idiomáticos.
 | **Enum unitário em lista, iterado, em `match`** | `matrix_m26_enum_in_list`, `examples/enum_flags.orv` | **corrigido nesta sprint** | `matrix_m26_...`, `example_enum_flags` |
 | **Construtor de variante como valor** | `matrix_m27_closure_constructor` | **corrigido nesta sprint** (ADR 0017) | `matrix_m27_...` |
 
+## Features 0.1.2 (interpolação e mutação de campo)
+
+Sprint `feat-0.1.2-interpolation-and-mutation`. Duas features; cada linha roda e
+produz a saída esperada (ou o diagnóstico esperado).
+
+| Construção | Onde é exercitada | Resultado | Golden |
+|---|---|---|---|
+| Interpolação `{expr}` de cada tipo de Value (Int, Float, Str, Bool, enum s/ payload, enum c/ payload, `data`, List, Map, none) | `interpolation_of_every_value_kind_matches_str` | ok; `"{x}"` == `str(x)` | `matrix_m31_interpolation` |
+| Interpolação concatenando com o texto literal | `interpolation_concatenates_with_the_literal_text` | ok | `matrix_m31_interpolation` |
+| Interpolação aninhada `"{f("{x}")}"` | `interpolation_can_nest` | ok (o lexer já aceitava; agora avalia) | — |
+| Interpolação vê o escopo onde aparece (incl. bloco interno) | `an_interpolation_sees_the_scope_around_it` | ok | — |
+| Nome fora de escopo dentro de `{}` | `an_undefined_name_inside_an_interpolation_reports_e0201` | `E0201`, span dentro da interpolação | — |
+| Erro de runtime dentro de `{}` (`"{1/0}"`) | `a_runtime_error_inside_an_interpolation_has_the_inner_span` | `R0001` com span interno | — |
+| Sub-parse de `{...}` com conteúdo hostil nunca panica | `interpolation_subparse_never_panics` (proptest) | ok | — |
+| Mutação de campo em `let mut u` | `mutating_a_data_field_is_visible_on_the_binding` | ok | `matrix_m32_field_mutation` |
+| Semântica de valor: `let b = a`; mutar `a2` não muda `b` | `data_has_value_semantics_on_assignment` | ok | `matrix_m32_field_mutation` |
+| Escrita em campo de `data` imutável | `assigning_to_a_field_requires_a_mutable_binding` | `E0230` | — |
+| Escrita em campo opcional / receptor aninhado | `assigning_to_an_optional_field_is_rejected`, `assigning_to_a_nested_field_is_rejected` | `E0231` | — |
+| `Value::Data` clonado é cópia independente | `cloning_a_data_makes_an_independent_copy` | ok | — |
+
+### Combinações cruzadas com o que já existia
+
+| Combinação (cruza 0.1.2 com feature anterior) | Onde é exercitada | Resultado | Golden |
+|---|---|---|---|
+| Interpolar um campo de `data` **depois** de mutá-lo | `interpolating_a_mutated_field_shows_the_new_value` | ok | `matrix_m32_field_mutation` |
+| Mutar campo dentro de um loop com `break` | `a_field_can_be_mutated_inside_a_loop` | ok | `matrix_m31`/`matrix_m32` |
+| Interpolar dentro de lambda que captura a variável mutada | `a_data_value_can_be_captured_and_mutated_by_a_closure_binding` + `matrix_m32` | ok | `matrix_m32_field_mutation` |
+| Interpolação de um campo mutado dentro de closure | `matrix_m31_interpolation`/`matrix_m32` | ok | ambos |
+| Interpolar `data` cujo campo veio de `for`/`if` | `matrix_m31_interpolation` | ok | `matrix_m31_interpolation` |
+
+## Auditoria `fix-0.1.3` (superfície nova da 0.1.2)
+
+Sprint `fix-0.1.3`. Cada item da varredura dirigida, com o resultado.
+
+| Item | Construção | Onde é exercitada | Resultado |
+|---|---|---|---|
+| (a) | Interpolação aninhada até milhares de níveis | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, proptest `nested_interpolation_never_overflows`, proptest `nested_interpolation_agrees`, gerador dedicado no `fuzz-bytes` | **era bug P0**: `Parser::new_nested` resetava `depth` a 0, então 3000 níveis estouravam a pilha nativa (SIGABRT, exit 134 — reproduzido no estado 0.1.2). Corrigido: o sub-parse **compartilha** o orçamento de profundidade (ADR 0013) e reporta `E0104`. |
+| (a) | Interpolação aninhada moderada (20 níveis) aceita | `moderately_nested_interpolation_is_fine` | ok |
+| (b) | N interpolações sequenciais, custo linear | `many_sequential_interpolations_scale_linearly` | verificado, sem bug (2k→16k partes, razão < 30 — falharia se fosse quadrático) |
+| (c) | Igualdade estrutural de dois `data` independentes | `equality_of_separately_built_data_is_structural_not_identity` | verificado, sem bug (compara conteúdo, não `Rc`) |
+| (c) | Mutar e desmutar um campo mantém a igualdade | idem | verificado, sem bug |
+| (d) | Lambda como valor em campo de `data` conduzindo mutação (ADR 0017) | `a_lambda_in_a_data_field_can_drive_a_field_mutation` | ok |
+| (d) | Corpo de lambda muta campo e resulta em construtor de variante (ADR 0017 × 0022) | `a_variant_constructor_lambda_can_mutate_a_data_field` | ok |
+| (d) | Mutação + interpolação dentro de lambda chamada (ADR 0021) | `mutation_and_interpolation_happen_inside_a_lambda`; gerador `lambda_mutation_agrees` (com `break`) | ok |
+| (d) | Campo de `data` que é `enum` unitário, mutado e comparado (ADR 0020) | `a_data_field_holding_a_unit_enum_can_be_mutated_and_compared`; gerador `enum_field_mutation_agrees` | ok |
+| (e) | Falha dependente de dado dentro de `{}` (índice OOB em loop) | `a_data_dependent_failure_inside_an_interpolation_keeps_its_code` | `R0003` + span do `xs[i]` interno (assertado) |
+| (e) | Falha dentro de `match` dentro de `{}` | `a_failure_inside_a_match_inside_an_interpolation_keeps_its_code` | `R0001` + span do `1/0` interno (assertado) |
+| (e) | Chave de mapa ausente dentro de `{}` | `a_missing_map_key_inside_an_interpolation_reports_r0003` | `R0003` + span do `m[k]` interno (assertado) |
+| (e) | Divisão por zero direta dentro de `{}` (span deixa de ser só mensagem) | `a_runtime_error_inside_an_interpolation_has_the_inner_span` | `R0001` + span assertado no texto interno |
+| (e) | Span de diagnóstico dentro de interpolação **aninhada** (2+ níveis) | `an_undefined_name_in_a_nested_interpolation_points_at_the_name` (sema), asserção de span no teste do `E0104` profundo | **era bug**: o sub-parse deslocava o token `Str` mas não os `StrPart::Expr` embutidos → `E0201` em `5..9` em vez de `56..60` (e `E0104:1:3`). Corrigido: os parts são deslocados junto (SPEC §5.1). |
+
 ## Combinações cruzadas (sprint `fix-0.1.1`)
 
 Cada linha cruza **duas** construções que isoladamente já tinham golden, mas cuja

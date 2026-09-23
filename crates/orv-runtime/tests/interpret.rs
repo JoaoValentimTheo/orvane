@@ -58,6 +58,24 @@ fn main(body: &str) -> String {
     format!("fn main() {{\n{body}\n}}\n")
 }
 
+/// Asserts that a failure's span covers `needle` inside `source`, i.e. the
+/// diagnostic points at the inner expression (here: inside `{...}`), not at
+/// the string literal or the whole program (item (e)).
+fn assert_inner_span(source: &str, span: orv_syntax::Span, needle: &str) {
+    let start = source
+        .find(needle)
+        .unwrap_or_else(|| panic!("{needle:?} not found in {source:?}")) as u32;
+    let end = start + needle.len() as u32;
+    let text = source
+        .get(span.start as usize..span.end as usize)
+        .unwrap_or("<span out of source bounds>");
+    assert_eq!(
+        (span.start, span.end, text),
+        (start, end, needle),
+        "expected the span of the inner expression {needle:?}"
+    );
+}
+
 // --- Basics -----------------------------------------------------------------
 
 #[test]
@@ -247,6 +265,404 @@ fn main() {
 }
 ";
     assert_eq!(run(source), "0\n1\ndone\n");
+}
+
+// --- String interpolation (SPEC §5.1) ---------------------------------------
+
+#[test]
+fn interpolation_of_every_value_kind_matches_str() {
+    // The acceptance invariant: `print("{x}")` == `print(str(x))` for every
+    // value kind, because both go through `value::display`.
+    let source = "\
+enum Color { Red, Green(Int) }
+data User { name: Str, age: Int, email: Str? = none }
+
+fn main() {
+    print(\"{1}|{str(1)}\")
+    print(\"{1.5}|{str(1.5)}\")
+    print(\"{true}|{str(true)}\")
+    print(\"{none}|{str(none)}\")
+    print(\"{Red}|{str(Red)}\")
+    print(\"{Green(3)}|{str(Green(3))}\")
+    let u = User(name: \"Mel\", age: 30)
+    print(\"{u}|{str(u)}\")
+    print(\"{[1, 2]}|{str([1, 2])}\")
+    print(\"{#{\"a\": 1}}|{str(#{\"a\": 1})}\")
+}
+";
+    assert_eq!(
+        run(source),
+        "1|1\n1.5|1.5\ntrue|true\nnone|none\nRed|Red\nGreen(3)|Green(3)\n\
+         User(name: \"Mel\", age: 30, email: none)|User(name: \"Mel\", age: 30, email: none)\n\
+         [1, 2]|[1, 2]\n#{\"a\": 1}|#{\"a\": 1}\n"
+    );
+}
+
+#[test]
+fn interpolation_concatenates_with_the_literal_text() {
+    let source = "\
+fn main() {
+    let n = 3
+    print(\"n = {n}, twice = {n * 2}!\")
+}
+";
+    assert_eq!(run(source), "n = 3, twice = 6!\n");
+}
+
+#[test]
+fn interpolation_can_nest() {
+    // The lexer already accepted `"{f("{x}")}"`; it must now evaluate.
+    let source = "\
+fn id(s: Str) -> Str { s }
+fn main() {
+    let x = 7
+    print(\"{id(\"{x}\")}\")
+}
+";
+    assert_eq!(run(source), "7\n");
+}
+
+#[test]
+fn an_interpolation_sees_the_scope_around_it() {
+    let source = "\
+fn main() {
+    let outer = 1
+    if true {
+        let inner = 2
+        print(\"{outer}-{inner}\")
+    }
+}
+";
+    assert_eq!(run(source), "1-2\n");
+}
+
+#[test]
+fn a_runtime_error_inside_an_interpolation_has_the_inner_span() {
+    let source = "fn main() {\n    print(\"v={1/0}\")\n}\n";
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::DivisionByZero,
+        "got {failure:?}"
+    );
+    assert!(
+        failure.message.contains("division by zero"),
+        "expected a division failure, got {failure:?}"
+    );
+    assert_inner_span(source, failure.span, "1/0");
+}
+
+#[test]
+fn a_data_dependent_failure_inside_an_interpolation_keeps_its_code() {
+    // Item (e): the failure code must be the same one the expression would
+    // raise outside the string, not a generic interpolation error. Index out of
+    // bounds is data-dependent (only fails on the third iteration here).
+    let source = "\
+fn main() {
+    let xs = [10, 20]
+    for i in 0..3 {
+        print(\"v={xs[i]}\")
+    }
+}
+";
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    assert!(!outcome.is_ok(), "expected the out-of-bounds failure");
+    assert_eq!(outcome.output, "v=10\nv=20\n");
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::IndexOutOfBounds,
+        "got {failure:?}"
+    );
+    assert!(failure.message.contains("out of bounds"), "got {failure:?}");
+    assert_inner_span(source, failure.span, "xs[i]");
+}
+
+#[test]
+fn a_failure_inside_a_match_inside_an_interpolation_keeps_its_code() {
+    let source = "\
+fn main() {
+    let x = 0
+    print(\"v={match x { 0 => 1/0, _ => x }}\")
+}
+";
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::DivisionByZero,
+        "got {failure:?}"
+    );
+    assert!(
+        failure.message.contains("division by zero"),
+        "expected a division failure, got {failure:?}"
+    );
+    assert_inner_span(source, failure.span, "1/0");
+}
+
+#[test]
+fn a_missing_map_key_inside_an_interpolation_reports_r0003() {
+    let source = "\
+fn main() {
+    let m = #{\"a\": 1}
+    let k = \"b\"
+    print(\"v={m[k]}\")
+}
+";
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::MissingKey,
+        "got {failure:?}"
+    );
+    assert_inner_span(source, failure.span, "m[k]");
+}
+
+#[test]
+fn many_sequential_interpolations_scale_linearly() {
+    // Item (b): N non-nested `{expr}` in one string must cost O(N), i.e. the
+    // sub-parse of each part is independent and cheap. The bound is generous
+    // (seconds, not milliseconds) so this is not flaky on a busy CI machine,
+    // but it would catch an accidental O(N^2) (e.g. re-scanning the whole text
+    // per part).
+    use std::time::Instant;
+
+    fn build(count: usize) -> String {
+        let parts = "{x}".repeat(count);
+        format!("fn main() {{\n    let x = 1\n    print(\"{parts}\")\n}}\n")
+    }
+
+    let small = 2_000;
+    let large = 16_000; // 8x the parts
+
+    let start = Instant::now();
+    let output = run(&build(small));
+    let small_time = start.elapsed();
+
+    let start = Instant::now();
+    let large_output = run(&build(large));
+    let large_time = start.elapsed();
+
+    assert_eq!(output.len(), small + 1); // each `{x}` prints one char, plus `\n`
+    assert_eq!(large_output.len(), large + 1);
+
+    // Linear would be ~8x; allow a wide margin (quadratic would be ~64x).
+    let small_nanos = small_time.as_nanos().max(1);
+    let ratio = large_time.as_nanos() / small_nanos;
+    assert!(
+        ratio < 30,
+        "expected near-linear scaling, got {ratio}x for 8x the parts \
+         ({small_time:?} -> {large_time:?})"
+    );
+}
+
+// --- Mutable data fields (ADR 0022) -----------------------------------------
+
+#[test]
+fn mutating_a_data_field_is_visible_on_the_binding() {
+    let source = "\
+data User { name: Str, age: Int, email: Str? = none }
+
+fn main() {
+    let mut u = User(name: \"Mel\", age: 30)
+    u.age = 99
+    print(u.age)
+    print(u)
+}
+";
+    assert_eq!(
+        run(source),
+        "99\nUser(name: \"Mel\", age: 99, email: none)\n"
+    );
+}
+
+#[test]
+fn data_has_value_semantics_on_assignment() {
+    // ADR 0022: `let b = a` copies. Mutating one binding must not touch the
+    // other, so `b.age` keeps the old value after `a2.age = 99`.
+    let source = "\
+data User { name: Str, age: Int }
+
+fn main() {
+    let a = User(name: \"A\", age: 1)
+    let b = a
+    let mut a2 = a
+    a2.age = 99
+    print(b.age)
+    print(a2.age)
+}
+";
+    assert_eq!(run(source), "1\n99\n");
+}
+
+#[test]
+fn interpolating_a_mutated_field_shows_the_new_value() {
+    let source = "\
+data User { name: Str, age: Int }
+
+fn main() {
+    let mut u = User(name: \"Mel\", age: 30)
+    u.age = 31
+    print(\"age = {u.age}, full = {u}\")
+}
+";
+    assert_eq!(
+        run(source),
+        "age = 31, full = User(name: \"Mel\", age: 31)\n"
+    );
+}
+
+#[test]
+fn a_field_can_be_mutated_inside_a_loop() {
+    let source = "\
+data Counter { n: Int }
+
+fn main() {
+    let mut c = Counter(n: 0)
+    for i in 0..5 {
+        if i == 3 { break }
+        c.n = c.n + 1
+    }
+    print(c.n)
+}
+";
+    assert_eq!(run(source), "3\n");
+}
+
+#[test]
+fn a_data_value_can_be_captured_and_mutated_by_a_closure_binding() {
+    // The closure captures the binding by reference; mutating through the
+    // closure and reading after must agree (value semantics, ADR 0022).
+    let source = "\
+data Counter { n: Int }
+
+fn main() {
+    let mut c = Counter(n: 0)
+    let bump: fn() -> () = () => { c.n = c.n + 1 }
+    bump()
+    bump()
+    print(c.n)
+}
+";
+    assert_eq!(run(source), "2\n");
+}
+
+#[test]
+fn equality_of_separately_built_data_is_structural_not_identity() {
+    // Item (c): two `data` values built independently (not cloned from each
+    // other) are `==` after the move to `Rc<RefCell<..>>`, and mutating one and
+    // restoring the field keeps `==` true — the comparison is by content, not
+    // by `Rc` identity.
+    let source = "\
+data U { x: Int, y: Str }
+
+fn main() {
+    let a = U(x: 1, y: \"s\")
+    let b = U(x: 1, y: \"s\")
+    print(a == b)
+
+    let mut c = U(x: 1, y: \"s\")
+    c.x = 99
+    print(c == a)
+    c.x = 1
+    print(c == a)
+    print(a == c)
+}
+";
+    assert_eq!(run(source), "true\nfalse\ntrue\ntrue\n");
+}
+
+// --- Mutation across existing feature boundaries (items d) -------------------
+
+#[test]
+fn a_lambda_in_a_data_field_can_drive_a_field_mutation() {
+    // Combines ADR 0017 (a closure as a value in a `data` field) with ADR 0022.
+    let source = "\
+enum Shape { Circle(Int), Dot }
+
+data Holder { make: fn(Int) -> Shape, last: Shape }
+
+fn main() {
+    let mut h = Holder(make: r => Circle(r), last: Dot)
+    let m = h.make
+    h.last = m(3)
+    print(h.last)
+    print(\"{h.last}\")
+}
+";
+    assert_eq!(run(source), "Circle(3)\nCircle(3)\n");
+}
+
+#[test]
+fn mutation_and_interpolation_happen_inside_a_lambda() {
+    // The lambda's own body mutates the captured binding and interpolates the
+    // result; control flow stays inside the call (ADR 0021).
+    let source = "\
+data C { n: Int }
+
+fn main() {
+    let mut c = C(n: 0)
+    let f: fn() -> Str = () => { c.n = c.n + 1; \"{c.n}\" }
+    print(f())
+    print(f())
+    print(c.n)
+}
+";
+    assert_eq!(run(source), "1\n2\n2\n");
+}
+
+#[test]
+fn a_variant_constructor_lambda_can_mutate_a_data_field() {
+    // The lambda's own body mutates the captured `data` field and evaluates to
+    // a variant constructor application (ADR 0017) in the same expression
+    // (ADR 0022), then the result is stored back through field assignment.
+    let source = "\
+enum Shape { Circle(Int), Dot }
+
+data Box { n: Int, last: Shape }
+
+fn main() {
+    let mut b = Box(n: 0, last: Dot)
+    let step: fn(Int) -> Shape = r => {
+        b.n = b.n + 1
+        Circle(r + b.n)
+    }
+    b.last = step(1)
+    print(b.n)
+    print(b.last)
+    print(\"{b.last}\")
+}
+";
+    assert_eq!(run(source), "1\nCircle(2)\nCircle(2)\n");
+}
+
+#[test]
+fn a_data_field_holding_a_unit_enum_can_be_mutated_and_compared() {
+    // Combines ADR 0020 (unit enum) with ADR 0022: the field is a unit variant,
+    // and equality tracks the field value across mutation and restoration.
+    let source = "\
+enum Color { Red, Green }
+
+data P { c: Color }
+
+fn main() {
+    let mut p = P(c: Red)
+    let q = P(c: Red)
+    print(p == q)
+    p.c = Green
+    print(p == q)
+    p.c = Red
+    print(p == q)
+    print(\"{p.c}\")
+}
+";
+    assert_eq!(run(source), "true\nfalse\ntrue\nRed\n");
 }
 
 // --- Control flow -----------------------------------------------------------

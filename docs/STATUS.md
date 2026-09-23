@@ -1,12 +1,26 @@
 # Status das features
 
-> **Limitações visíveis da 0.1.0-alpha** (ver [ADR 0018](adr/0018-alpha-scope-limits.md)):
-> strings com `{expr}` imprimem o texto **literal** (interpolação avaliada chega
-> depois); atribuir a campo de `data` (`u.age = 2`) é `E0231` — mutação de
-> elemento de lista/mapa funciona.
+> **Recursos da 0.1.2** (ver [ADR 0022](adr/0022-data-field-mutation.md)):
+> interpolação `{expr}` é **avaliada** (`print("{x}")` == `print(str(x))`); e
+> atribuir a campo de `data` mutável funciona (`let mut u = ...; u.age = 2`),
+> com semântica de valor (`let b = a` copia). Campo de `data` imutável é
+> `E0230`; campo opcional (`u?.x = 1`) e receptor aninhado (`a.b.c = 1`) seguem
+> `E0231`.
 
 Regra (§0.2 item 4 / §11 item 6): uma feature só é **Implemented** se houver
 teste golden que a exercita. Sem teste → `Planned`.
+
+## Correções 0.1.3 (`fix-0.1.3`)
+
+Ritmo de correção sobre a superfície nova da 0.1.2 (interpolação avaliada +
+mutação de campo), zero feature nova. Changelog:
+[`CHANGELOG.md`](../CHANGELOG.md). Achados da auditoria dirigida (itens b–e):
+ver [`coverage-matrix.md`](coverage-matrix.md), seção "Auditoria fix-0.1.3".
+
+| Correção | Teste de regressão | ADR |
+|---|---|---|
+| Interpolação profundamente aninhada estourava a pilha nativa: o sub-parse de `{expr}` criava `Parser` com `depth: 0` e contornava o limite `E0104` | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, `moderately_nested_interpolation_is_fine`, proptests `nested_interpolation_never_overflows` e `nested_interpolation_agrees`, gerador de aninhamento no `fuzz-bytes` | 0013 |
+| Diagnóstico dentro de interpolação aninhada (≥ 2 níveis) apontava para offset errado do arquivo (`StrPart::Expr` embutido não era deslocado no sub-parse) | `an_undefined_name_in_a_nested_interpolation_points_at_the_name` (sema), asserção de span no teste do `E0104` profundo | — |
 
 ## Correções 0.1.1 (`fix-0.1.1`)
 

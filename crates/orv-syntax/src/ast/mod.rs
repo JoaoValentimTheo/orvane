@@ -14,7 +14,7 @@ mod item;
 mod stmt;
 mod types;
 
-pub use expr::{Arg, BinaryOp, Expr, ExprKind, Literal, MatchArm, UnaryOp};
+pub use expr::{Arg, BinaryOp, Expr, ExprKind, Literal, MatchArm, StrSegment, UnaryOp};
 pub use item::{
     DataDecl, EnumDecl, FieldDecl, FnDecl, Item, ItemKind, Param, Program, UseDecl, VariantDecl,
 };

@@ -121,13 +121,13 @@ fn all_prelude_names_exist() {
 #[test]
 fn failure_forms_display_stably() {
     // `Err` with a `data` Failure-like value reads its `message` field.
-    let failure_like = Value::Data {
-        name: "Failure".into(),
-        fields: std::rc::Rc::new(vec![
+    let failure_like = Value::data(
+        "Failure",
+        vec![
             ("kind".into(), Value::str("Boom")),
             ("message".into(), Value::str("something broke")),
-        ]),
-    };
+        ],
+    );
     let err = call("Err", vec![failure_like]);
     let rendered = match err {
         Ok(Value::Result {

@@ -17,8 +17,18 @@ use orv_syntax::Span;
 use crate::failure::Failure;
 use crate::function::Closure;
 
+/// The fields of a `data` value: `(name, value)` in declaration order.
+///
+/// Shared and mutable so one field can be reassigned in place (ADR 0022).
+pub type DataFields = Rc<RefCell<Vec<(Rc<str>, Value)>>>;
+
 /// A runtime value.
-#[derive(Clone, Debug)]
+///
+/// `Clone` is implemented by hand: aggregates are shared (a list/map/tuple/`data`
+/// clone shares the underlying `Rc`), **except** `data`, which has value
+/// semantics (ADR 0022): cloning a `data` makes an independent copy of its
+/// fields, so `let b = a; b.x = 1` does not change `a.x`.
+#[derive(Debug)]
 pub enum Value {
     /// A 64-bit integer.
     Int(i64),
@@ -38,10 +48,11 @@ pub enum Value {
     /// A tuple of two or more values.
     Tuple(Rc<Vec<Value>>),
     /// A `data` instance: the type name and its fields in declaration order.
-    Data {
-        name: Rc<str>,
-        fields: Rc<Vec<(Rc<str>, Value)>>,
-    },
+    ///
+    /// The fields sit behind a `RefCell` so a single field can be reassigned in
+    /// place (`u.age = 2`, ADR 0022). `Value`'s manual `Clone` deep-copies them,
+    /// which is what gives `data` value semantics.
+    Data { name: Rc<str>, fields: DataFields },
     /// An `enum` value: the type name, the variant name and its payload.
     Variant {
         enum_name: Rc<str>,
@@ -60,6 +71,43 @@ pub enum Value {
     },
 }
 
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        match self {
+            Value::Int(value) => Value::Int(*value),
+            Value::Float(value) => Value::Float(*value),
+            Value::Bool(value) => Value::Bool(*value),
+            Value::Str(value) => Value::Str(value.clone()),
+            Value::Unit => Value::Unit,
+            Value::List(elements) => Value::List(elements.clone()),
+            Value::Map(entries) => Value::Map(entries.clone()),
+            Value::Tuple(elements) => Value::Tuple(elements.clone()),
+            // Value semantics (ADR 0022): a `data` clone is an independent copy
+            // of the fields, so mutating one binding does not touch another.
+            Value::Data { name, fields } => Value::Data {
+                name: name.clone(),
+                fields: Rc::new(RefCell::new(fields.borrow().clone())),
+            },
+            Value::Variant {
+                enum_name,
+                variant,
+                payload,
+            } => Value::Variant {
+                enum_name: enum_name.clone(),
+                variant: variant.clone(),
+                payload: payload.clone(),
+            },
+            Value::None => Value::None,
+            Value::Function(function) => Value::Function(function.clone()),
+            Value::Result { ok, value, failure } => Value::Result {
+                ok: *ok,
+                value: value.clone(),
+                failure: failure.clone(),
+            },
+        }
+    }
+}
+
 impl Value {
     /// Creates a string value.
     pub fn str(text: impl Into<Rc<str>>) -> Self {
@@ -69,6 +117,14 @@ impl Value {
     /// Creates a list value.
     pub fn list(elements: Vec<Value>) -> Self {
         Value::List(Rc::new(RefCell::new(elements)))
+    }
+
+    /// Creates a `data` value from its type name and fields.
+    pub fn data(name: impl Into<Rc<str>>, fields: Vec<(Rc<str>, Value)>) -> Self {
+        Value::Data {
+            name: name.into(),
+            fields: Rc::new(RefCell::new(fields)),
+        }
     }
 
     /// Creates a map value.
@@ -173,6 +229,7 @@ impl Value {
                     fields: bf,
                 },
             ) => {
+                let (af, bf) = (af.borrow(), bf.borrow());
                 an == bn
                     && af.len() == bf.len()
                     && af
@@ -438,7 +495,7 @@ fn write_value(out: &mut String, value: &Value, quoted: bool) {
         }
         Value::Data { name, fields } => {
             let _ = write!(out, "{name}(");
-            for (index, (field, value)) in fields.iter().enumerate() {
+            for (index, (field, value)) in fields.borrow().iter().enumerate() {
                 if index > 0 {
                     out.push_str(", ");
                 }
@@ -595,14 +652,8 @@ mod tests {
 
     #[test]
     fn data_equality_uses_field_names_and_values() {
-        let a = Value::Data {
-            name: "U".into(),
-            fields: Rc::new(vec![("name".into(), Value::str("x"))]),
-        };
-        let b = Value::Data {
-            name: "U".into(),
-            fields: Rc::new(vec![("name".into(), Value::str("x"))]),
-        };
+        let a = Value::data("U", vec![("name".into(), Value::str("x"))]);
+        let b = Value::data("U", vec![("name".into(), Value::str("x"))]);
         assert_eq!(a, b);
     }
 
@@ -617,15 +668,27 @@ mod tests {
     #[test]
     fn display_of_a_data_matches_the_spec_example() {
         // §4.2: `User(name: "Mel", age: 30, email: none)`
-        let user = Value::Data {
-            name: "User".into(),
-            fields: Rc::new(vec![
+        let user = Value::data(
+            "User",
+            vec![
                 ("name".into(), Value::str("Mel")),
                 ("age".into(), Value::Int(30)),
                 ("email".into(), Value::None),
-            ]),
-        };
+            ],
+        );
         assert_eq!(display(&user), "User(name: \"Mel\", age: 30, email: none)");
+    }
+
+    #[test]
+    fn cloning_a_data_makes_an_independent_copy() {
+        // Value semantics (ADR 0022): a `data` clone does not share fields.
+        let a = Value::data("U", vec![("age".into(), Value::Int(1))]);
+        let b = a.clone();
+        if let Value::Data { fields, .. } = &a {
+            fields.borrow_mut()[0].1 = Value::Int(99);
+        }
+        assert_eq!(display(&a), "U(age: 99)");
+        assert_eq!(display(&b), "U(age: 1)");
     }
 
     #[test]

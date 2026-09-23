@@ -1,0 +1,12 @@
+// orv: run %f
+enum Color { Red, Green(Int) }
+data User { name: Str, age: Int, email: Str? = none }
+
+fn main() {
+    let x = 42
+    print("n = {x}")
+    print("{1 + 2} {1.5} {true} {none}")
+    let u = User(name: "Mel", age: 30)
+    print("{u}")
+    print("{Green(3)} {[1, 2]} {#{"a": 1}}")
+}

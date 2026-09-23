@@ -1,0 +1,15 @@
+// orv: run %f
+data Counter { n: Int, label: Str }
+
+fn main() {
+    let mut c = Counter(n: 0, label: "hits")
+    for i in 0..3 {
+        c.n = c.n + 1
+    }
+    print("{c.label} = {c.n}")
+    let snapshot = c
+    let mut c2 = c
+    c2.n = 99
+    print(snapshot.n)
+    print(c2.n)
+}
