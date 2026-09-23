@@ -3,6 +3,34 @@
 Todas as mudanças relevantes por versão. O formato segue "Keep a Changelog"
 (https://keepachangelog.com/pt-BR/1.1.0/) e o versionamento é o de `Cargo.toml`.
 
+## [0.1.3] - 2026-09-23
+
+Sprint `fix-0.1.3`: correção de bugs na superfície introduzida pela 0.1.2
+(interpolação avaliada + mutação de campo de `data`). Sem feature nova.
+
+### Corrigido
+
+- **P0 — interpolação profundamente aninhada estourava a pilha nativa.**
+  O sub-parse de `{expr}` criava um `Parser` novo com `depth: 0`, então o
+  limite de recursão `E0104` (ADR 0013) não contava os níveis de interpolação
+  aninhada (`"{"{"{...}"}"}"`) e milhares de níveis abortavam o processo com
+  *stack overflow* (SIGABRT), não um diagnóstico. O sub-parse agora **compartilha**
+  o orçamento de profundidade do parser externo e reporta `E0104`.
+  Regressão: `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`,
+  o proptest `nested_interpolation_never_overflows` e a estrutura no
+  `fuzz-bytes`.
+
+### Notas
+
+- A auditoria da superfície nova (itens b–e) **não** encontrou mais bugs:
+  custo O(n) para N interpolações sequenciais, igualdade estrutural de `data`
+  independente (inclusive mutar/desmutar), mutação cruzando as fronteiras de
+  lambda/variante/`break` e span/código de erro vindos de dentro da
+  interpolação estão todos cobertos por teste novo (ver
+  `docs/coverage-matrix.md`, seção "Auditoria fix-0.1.3").
+- Nenhuma issue aberta no repositório no início da sprint (mesma situação da
+  0.1.1); o P0 veio da auditoria dirigida, não de reporte de usuário.
+
 ## [0.1.2] - 2026-09-23
 
 Sprint `feat-0.1.2-interpolation-and-mutation`: duas features, sem correção de
