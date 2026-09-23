@@ -328,6 +328,104 @@ fn a_runtime_error_inside_an_interpolation_has_the_inner_span() {
     );
 }
 
+#[test]
+fn a_data_dependent_failure_inside_an_interpolation_keeps_its_code() {
+    // Item (e): the failure code must be the same one the expression would
+    // raise outside the string, not a generic interpolation error. Index out of
+    // bounds is data-dependent (only fails on the third iteration here).
+    let source = "\
+fn main() {
+    let xs = [10, 20]
+    for i in 0..3 {
+        print(\"v={xs[i]}\")
+    }
+}
+";
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    assert!(!outcome.is_ok(), "expected the out-of-bounds failure");
+    assert_eq!(outcome.output, "v=10\nv=20\n");
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::IndexOutOfBounds,
+        "got {failure:?}"
+    );
+    assert!(failure.message.contains("out of bounds"), "got {failure:?}");
+}
+
+#[test]
+fn a_failure_inside_a_match_inside_an_interpolation_keeps_its_code() {
+    let source = "\
+fn main() {
+    let x = 0
+    print(\"v={match x { 0 => 1/0, _ => x }}\")
+}
+";
+    let message = run_failure(source);
+    assert!(
+        message.contains("division by zero"),
+        "expected a division failure, got {message:?}"
+    );
+}
+
+#[test]
+fn a_missing_map_key_inside_an_interpolation_reports_r0003() {
+    let source = "\
+fn main() {
+    let m = #{\"a\": 1}
+    let k = \"b\"
+    print(\"v={m[k]}\")
+}
+";
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::MissingKey,
+        "got {failure:?}"
+    );
+}
+
+#[test]
+fn many_sequential_interpolations_scale_linearly() {
+    // Item (b): N non-nested `{expr}` in one string must cost O(N), i.e. the
+    // sub-parse of each part is independent and cheap. The bound is generous
+    // (seconds, not milliseconds) so this is not flaky on a busy CI machine,
+    // but it would catch an accidental O(N^2) (e.g. re-scanning the whole text
+    // per part).
+    use std::time::Instant;
+
+    fn build(count: usize) -> String {
+        let parts = "{x}".repeat(count);
+        format!("fn main() {{\n    let x = 1\n    print(\"{parts}\")\n}}\n")
+    }
+
+    let small = 2_000;
+    let large = 16_000; // 8x the parts
+
+    let start = Instant::now();
+    let output = run(&build(small));
+    let small_time = start.elapsed();
+
+    let start = Instant::now();
+    let large_output = run(&build(large));
+    let large_time = start.elapsed();
+
+    assert_eq!(output.len(), small + 1); // each `{x}` prints one char, plus `\n`
+    assert_eq!(large_output.len(), large + 1);
+
+    // Linear would be ~8x; allow a wide margin (quadratic would be ~64x).
+    let small_nanos = small_time.as_nanos().max(1);
+    let ratio = large_time.as_nanos() / small_nanos;
+    assert!(
+        ratio < 30,
+        "expected near-linear scaling, got {ratio}x for 8x the parts \
+         ({small_time:?} -> {large_time:?})"
+    );
+}
+
 // --- Mutable data fields (ADR 0022) -----------------------------------------
 
 #[test]
@@ -417,6 +515,93 @@ fn main() {
 }
 ";
     assert_eq!(run(source), "2\n");
+}
+
+#[test]
+fn equality_of_separately_built_data_is_structural_not_identity() {
+    // Item (c): two `data` values built independently (not cloned from each
+    // other) are `==` after the move to `Rc<RefCell<..>>`, and mutating one and
+    // restoring the field keeps `==` true — the comparison is by content, not
+    // by `Rc` identity.
+    let source = "\
+data U { x: Int, y: Str }
+
+fn main() {
+    let a = U(x: 1, y: \"s\")
+    let b = U(x: 1, y: \"s\")
+    print(a == b)
+
+    let mut c = U(x: 1, y: \"s\")
+    c.x = 99
+    print(c == a)
+    c.x = 1
+    print(c == a)
+    print(a == c)
+}
+";
+    assert_eq!(run(source), "true\nfalse\ntrue\ntrue\n");
+}
+
+// --- Mutation across existing feature boundaries (items d) -------------------
+
+#[test]
+fn a_lambda_in_a_data_field_can_drive_a_field_mutation() {
+    // Combines ADR 0017 (a closure as a value in a `data` field) with ADR 0022.
+    let source = "\
+enum Shape { Circle(Int), Dot }
+
+data Holder { make: fn(Int) -> Shape, last: Shape }
+
+fn main() {
+    let mut h = Holder(make: r => Circle(r), last: Dot)
+    let m = h.make
+    h.last = m(3)
+    print(h.last)
+    print(\"{h.last}\")
+}
+";
+    assert_eq!(run(source), "Circle(3)\nCircle(3)\n");
+}
+
+#[test]
+fn mutation_and_interpolation_happen_inside_a_lambda() {
+    // The lambda's own body mutates the captured binding and interpolates the
+    // result; control flow stays inside the call (ADR 0021).
+    let source = "\
+data C { n: Int }
+
+fn main() {
+    let mut c = C(n: 0)
+    let f: fn() -> Str = () => { c.n = c.n + 1; \"{c.n}\" }
+    print(f())
+    print(f())
+    print(c.n)
+}
+";
+    assert_eq!(run(source), "1\n2\n2\n");
+}
+
+#[test]
+fn a_data_field_holding_a_unit_enum_can_be_mutated_and_compared() {
+    // Combines ADR 0020 (unit enum) with ADR 0022: the field is a unit variant,
+    // and equality tracks the field value across mutation and restoration.
+    let source = "\
+enum Color { Red, Green }
+
+data P { c: Color }
+
+fn main() {
+    let mut p = P(c: Red)
+    let q = P(c: Red)
+    print(p == q)
+    p.c = Green
+    print(p == q)
+    p.c = Red
+    print(p == q)
+    print(\"{p.c}\")
+}
+";
+    assert_eq!(run(source), "true\nfalse\ntrue\nRed\n");
 }
 
 // --- Control flow -----------------------------------------------------------

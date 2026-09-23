@@ -338,6 +338,47 @@ fn field_mutation_program(mutable: bool, read_back: bool, in_loop: bool) -> Prog
     }
 }
 
+/// Builds a program with a `data` whose field is a unit enum, mutated in
+/// place, crossing ADR 0020 (unit enum) with ADR 0022 (field mutation).
+fn enum_field_mutation_program(mutate: bool, compare: bool, interpolate: bool) -> Program {
+    let binding = if mutate { "let mut p" } else { "let p" };
+    let mut body = format!("    {binding} = P(c: Red)\n    let q = P(c: Red)\n");
+    if mutate {
+        body.push_str("    p.c = Green\n");
+    }
+    if compare {
+        body.push_str("    print(p == q)\n");
+    }
+    if interpolate {
+        body.push_str("    print(\"{p.c}\")\n");
+    }
+
+    Program {
+        source: format!(
+            "enum Color {{\n    Red,\n    Green,\n}}\n\ndata P {{\n    c: Color,\n}}\n\nfn main() {{\n{body}}}\n"
+        ),
+        description: format!("enum field mutation={mutate} compare={compare} interp={interpolate}"),
+    }
+}
+
+/// Builds a program where a `data` binding is mutated and interpolated inside a
+/// lambda body, crossing ADR 0021 (call-confined control flow) with the 0.1.2
+/// features.
+fn lambda_mutation_program(with_loop: bool) -> Program {
+    let loop_body = if with_loop {
+        "        for i in 0..2 {\n            if i == 1 { break }\n            c.n = c.n + 1\n        }\n"
+    } else {
+        "        c.n = c.n + 1\n"
+    };
+    let source = format!(
+        "data C {{\n    n: Int,\n}}\n\nfn main() {{\n    let mut c = C(n: 0)\n    let f: fn() -> Str = () => {{\n{loop_body}        \"{{c.n}}\"\n    }}\n    print(f())\n    print(c.n)\n}}\n"
+    );
+    Program {
+        source,
+        description: format!("lambda mutation loop={with_loop}"),
+    }
+}
+
 /// Runs one generated program and asserts the sema/runtime agreement invariant.
 ///
 /// Returns `Ok(())` when the program is consistent (either the sema rejects it,
@@ -489,5 +530,39 @@ proptest! {
         in_loop in any::<bool>(),
     ) {
         assert_agreement(&field_mutation_program(mutable, read_back, in_loop))?;
+    }
+
+    /// A `data` field holding a unit enum agrees across mutation and compare.
+    #[test]
+    fn enum_field_mutation_agrees(
+        mutate in any::<bool>(),
+        compare in any::<bool>(),
+        interpolate in any::<bool>(),
+    ) {
+        assert_agreement(&enum_field_mutation_program(mutate, compare, interpolate))?;
+    }
+
+    /// Mutation + interpolation inside a lambda body agrees, with and without
+    /// a bounded loop.
+    #[test]
+    fn lambda_mutation_agrees(with_loop in any::<bool>()) {
+        assert_agreement(&lambda_mutation_program(with_loop))?;
+    }
+
+    /// Deeply nested interpolation agrees: the whole pipeline either accepts it
+    /// or rejects it with a diagnostic, never crashing. The sub-parse shares
+    /// the parser's depth budget (ADR 0013), so this also guards the P0 fixed
+    /// in `fix-0.1.3`.
+    #[test]
+    fn nested_interpolation_agrees(levels in 0usize..400) {
+        let mut inner = "x".to_owned();
+        for _ in 0..levels {
+            inner = format!("\"{{{inner}}}\"");
+        }
+        let program = Program {
+            source: format!("fn main() {{\n    let x = 1\n    print({inner})\n}}\n"),
+            description: format!("nested interpolation levels={levels}"),
+        };
+        assert_agreement(&program)?;
     }
 }

@@ -90,6 +90,24 @@ produz a saída esperada (ou o diagnóstico esperado).
 | Interpolação de um campo mutado dentro de closure | `matrix_m31_interpolation`/`matrix_m32` | ok | ambos |
 | Interpolar `data` cujo campo veio de `for`/`if` | `matrix_m31_interpolation` | ok | `matrix_m31_interpolation` |
 
+## Auditoria `fix-0.1.3` (superfície nova da 0.1.2)
+
+Sprint `fix-0.1.3`. Cada item da varredura dirigida, com o resultado.
+
+| Item | Construção | Onde é exercitada | Resultado |
+|---|---|---|---|
+| (a) | Interpolação aninhada até milhares de níveis | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, `nested_interpolation_never_overflows` (proptest), `nested_interpolation_never_overflows` no fuzz-bytes | **era bug P0**: `Parser::new_nested` resetava `depth` a 0, então 3000 níveis estouravam a pilha nativa (SIGABRT). Corrigido: o sub-parse **compartilha** o orçamento de profundidade (ADR 0013) e reporta `E0104`. |
+| (a) | Interpolação aninhada moderada (20 níveis) aceita | `moderately_nested_interpolation_is_fine` | ok |
+| (b) | N interpolações sequenciais, custo linear | `many_sequential_interpolations_scale_linearly` | verificado, sem bug (50000 partes em ~0,12 s) |
+| (c) | Igualdade estrutural de dois `data` independentes | `equality_of_separately_built_data_is_structural_not_identity` | verificado, sem bug (compara conteúdo, não `Rc`) |
+| (c) | Mutar e desmutar um campo mantém a igualdade | idem | verificado, sem bug |
+| (d) | Lambda como valor em campo de `data` conduzindo mutação (ADR 0017) | `a_lambda_in_a_data_field_can_drive_a_field_mutation` | ok |
+| (d) | Mutação + interpolação dentro de lambda chamada (ADR 0021) | `mutation_and_interpolation_happen_inside_a_lambda` | ok |
+| (d) | Campo de `data` que é `enum` unitário, mutado e comparado (ADR 0020) | `a_data_field_holding_a_unit_enum_can_be_mutated_and_compared` | ok |
+| (e) | Falha dependente de dado dentro de `{}` (índice OOB em loop) | `a_data_dependent_failure_inside_an_interpolation_keeps_its_code` | `R0003`, span interno |
+| (e) | Falha dentro de `match` dentro de `{}` | `a_failure_inside_a_match_inside_an_interpolation_keeps_its_code` | `R0001`, span interno |
+| (e) | Chave de mapa ausente dentro de `{}` | `a_missing_map_key_inside_an_interpolation_reports_r0003` | `R0003`, span interno |
+
 ## Combinações cruzadas (sprint `fix-0.1.1`)
 
 Cada linha cruza **duas** construções que isoladamente já tinham golden, mas cuja
