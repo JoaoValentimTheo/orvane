@@ -45,6 +45,16 @@ fn main() {
             let roll = next() % 100;
             if roll < 60 {
                 text.push_str(FRAGMENTS[(next() % FRAGMENTS.len() as u64) as usize]);
+            } else if roll < 68 {
+                // A run of nested string interpolation. The parser's sub-parse
+                // must share its recursion budget, so any depth here parses or
+                // reports E0104 — never a stack overflow (ADR 0013).
+                let levels = (next() % 600) as usize;
+                let mut inner = "x".to_owned();
+                for _ in 0..levels {
+                    inner = format!("\"{{{inner}}}\"");
+                }
+                text.push_str(&inner);
             } else if roll < 80 {
                 // A random byte, which may or may not be valid UTF-8.
                 let byte = (next() % 256) as u8;

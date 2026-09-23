@@ -157,6 +157,34 @@ fn moderately_nested_input_is_fine() {
     parse_ok(&source);
 }
 
+/// Builds `n` levels of nested string interpolation around `x`:
+/// `"{"{"{...x...}"}"}"`.
+fn nested_interpolation(levels: usize) -> String {
+    let mut inner = "x".to_owned();
+    for _ in 0..levels {
+        inner = format!("\"{{{inner}}}\"");
+    }
+    format!("fn main() {{\n    let x = 1\n    print({inner})\n}}\n")
+}
+
+#[test]
+fn deeply_nested_interpolation_reports_e0104_instead_of_overflowing() {
+    // The interpolation sub-parse shares the parser's recursion budget
+    // (ADR 0013), so nesting here is bounded even though each level re-lexes
+    // its own text. Without that, thousands of levels overflow the stack.
+    let parsed = parse(&nested_interpolation(3000));
+    assert!(
+        parsed.codes.contains(&"E0104"),
+        "expected the depth limit: {:?}",
+        &parsed.codes[..parsed.codes.len().min(5)]
+    );
+}
+
+#[test]
+fn moderately_nested_interpolation_is_fine() {
+    parse_ok(&nested_interpolation(20));
+}
+
 #[test]
 fn the_parser_tolerates_an_empty_token_slice() {
     // `lex` never produces this, but the parser promises not to panic. An empty
@@ -251,5 +279,14 @@ proptest! {
             .collect();
         let text = format!("fn main() {{\n    print(\"before {{{safe}}} after\")\n}}\n");
         parse_bytes(&text);
+    }
+
+    /// Nested interpolation to an arbitrary depth must never overflow the
+    /// stack: the sub-parse shares the parser's recursion budget, so any depth
+    /// either parses or reports `E0104` (ADR 0013). Regression guard for the
+    /// depth reset that used to make this abort.
+    #[test]
+    fn nested_interpolation_never_overflows(levels in 0usize..5000) {
+        parse_bytes(&nested_interpolation(levels));
     }
 }

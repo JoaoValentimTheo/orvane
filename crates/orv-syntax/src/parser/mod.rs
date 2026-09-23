@@ -80,15 +80,32 @@ impl<'a> Parser<'a> {
     /// Creates a parser for a nested token stream (an interpolation's
     /// sub-parse) with no lexical diagnostics of its own.
     ///
-    /// The caller already shifted the tokens' spans into the outer file, so
-    /// diagnostics from this parser point at the right place.
-    pub(crate) fn new_nested(tokens: &'a [Token]) -> Self {
+    /// `depth` is the caller's current nesting depth: the sub-parse **shares**
+    /// the recursion budget, so deeply nested interpolation (`"{ "{ ... }" }"`)
+    /// hits the same `E0104` limit instead of overflowing the native stack
+    /// (ADR 0013). The caller already shifted the tokens' spans into the outer
+    /// file, so diagnostics from this parser point at the right place.
+    pub(crate) fn new_nested(tokens: &'a [Token], depth: u32) -> Self {
         Self {
             tokens,
             cursor: 0,
             diagnostics: Diagnostics::new(std::iter::empty()),
-            depth: 0,
+            depth,
         }
+    }
+
+    /// The parser's current nesting depth (the caller of a sub-parse reads it
+    /// back so the budget stays shared).
+    pub(crate) fn depth(&self) -> u32 {
+        self.depth
+    }
+
+    /// Raises this parser's depth to at least `depth`.
+    ///
+    /// Used after a sub-parse so a later interpolation in the same expression
+    /// keeps the budget the sub-parse consumed (ADR 0013).
+    pub(crate) fn absorb_depth(&mut self, depth: u32) {
+        self.depth = self.depth.max(depth);
     }
 
     /// Consumes the parser, returning its diagnostics (for a nested parse whose

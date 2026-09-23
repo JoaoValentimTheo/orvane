@@ -901,8 +901,13 @@ impl Parser<'_> {
             token.span = shift_span(token.span, span.start);
         }
 
-        let mut sub = Parser::new_nested(&tokens);
+        // The sub-parse shares this parser's nesting budget, so a deeply nested
+        // `"{ "{ ... }" }"` reaches `E0104` instead of overflowing the stack
+        // (ADR 0013). The budget only grows: we keep the sub-parser's depth so a
+        // later sibling interpolation cannot reset it.
+        let mut sub = Parser::new_nested(&tokens, self.depth);
         let expr = sub.expr();
+        self.absorb_depth(sub.depth());
         // Propagate any diagnostic the sub-parser produced (spans already
         // shifted because the tokens were).
         let sub_diagnostics = sub.into_diagnostics();
