@@ -41,13 +41,15 @@ interoperabilidade com Python (`use py`, M7), `orv test`/`fmt`/`repl`,
 módulos multi-arquivo e generics. O recorte está no
 [ADR 0012](docs/adr/0012-alpha-scope.md).
 
-> **Atenção — duas limitações visíveis na 0.1.0-alpha:**
-> 1. **Strings com `{expr}` imprimem o texto literal**, não o valor:
->    `print("n = {len(xs)}")` imprime `n = {len(xs)}`. A interpolação avaliada
->    chega em milestone futuro ([ADR 0018](docs/adr/0018-alpha-scope-limits.md)).
-> 2. **Atribuir a campo de `data` não é suportado**: `u.age = 2` é o erro
->    `E0231`. Reconstrua o valor (`let u2 = User(name: u.name, age: 2)`).
->    Mutação de elemento de lista/mapa (`xs[0] = 1`, `m["k"] = 1`) funciona.
+> **Dois recursos entregues na 0.1.2:**
+> 1. **Interpolação `{expr}` avaliada**: `print("n = {len(xs)}")` imprime o
+>    valor. `"{x}"` produz o mesmo texto que `str(x)`
+>    ([ADR 0022](docs/adr/0022-data-field-mutation.md)).
+> 2. **Mutação de campo de `data`**: `let mut u = User(..); u.age = 2`
+>    funciona, com **semântica de valor** — `let b = a` copia, então mutar uma
+>    cópia não afeta a original. Campo de `data` imutável é `E0230`; campo
+>    opcional (`u?.x = 1`) e receptor aninhado (`a.b.c = 1`) seguem `E0231`
+>    ([ADR 0022](docs/adr/0022-data-field-mutation.md)).
 
 Nada aqui é "1.0": a alpha valida lexer, parser, sema e runtime de ponta a
 ponta antes de investir no planner. O detalhe feature-a-feature (com o teste

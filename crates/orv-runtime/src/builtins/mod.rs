@@ -190,6 +190,7 @@ fn err(_interpreter: &mut Interpreter, args: &[Value], span: Span) -> EvalResult
         Value::Str(message) => Failure::new(FailureKind::Unsupported, message.clone(), span),
         Value::Data { fields, .. } => {
             let message = fields
+                .borrow()
                 .iter()
                 .find(|(name, _)| name.as_ref() == "message")
                 .map(|(_, value)| display(value))

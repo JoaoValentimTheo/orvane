@@ -1,6 +1,6 @@
 # ADR 0018 — Limitações de escopo da 0.1.0-alpha, documentadas retroativamente
 
-- **Status:** aceita
+- **Status:** superada na 0.1.2 pela ADR 0022 (item 2) e pela Feature 1 da 0.1.2 (item 1)
 - **Data:** sprint `fix/0.1.0-stabilization`
 - **Relacionada:** ADR 0012 (recorte do alpha), ADR 0017 (variantes)
 

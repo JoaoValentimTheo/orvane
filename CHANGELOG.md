@@ -3,6 +3,36 @@
 Todas as mudanças relevantes por versão. O formato segue "Keep a Changelog"
 (https://keepachangelog.com/pt-BR/1.1.0/) e o versionamento é o de `Cargo.toml`.
 
+## [0.1.2] - 2026-09-23
+
+Sprint `feat-0.1.2-interpolation-and-mutation`: duas features, sem correção de
+bug avulsa. Cada feature tem teste de aceitação e golden.
+
+### Adicionado
+
+- **Interpolação de string avaliada.** `"{expr}"` produz o mesmo texto que
+  `print(expr)`, em todo tipo de valor (Int, Float, Str, Bool, enum, `data`,
+  List, Map, none), porque reusa `value::display`. O parser faz o sub-parse de
+  cada `Expr.src` com spans deslocados (SPEC §5.1) e a sema type-checa a
+  expressão no escopo onde a string aparece; uma referência indefinida dentro
+  de `{}` dá o mesmo `E0201` de fora. A guarda do ADR 0008 (não sub-parsear
+  quando o token tem erro léxico) continua valendo. Antes, `{expr}` era
+  impresso literalmente (ADR 0018, item 1, agora superado).
+- **Mutação de campo de `data`.** `let mut u = User(...); u.age = 2` funciona.
+  `data` passa a ter **semântica de valor**: `let b = a` copia, então mutar uma
+  cópia não afeta a original (ADR 0022). `Value::Data` guarda os campos atrás
+  de `RefCell` e `Value` tem `Clone` manual. Campo de `data` imutável é
+  `E0230`; campo opcional (`u?.x = 1`) e receptor aninhado (`a.b.c = 1`) seguem
+  `E0231`.
+
+### Notas
+
+- O ADR 0018 fica superado nos dois itens que documentava.
+- `docs/errors.md`: `E0230` passa a cobrir escrita em campo de `data` imutável;
+  `E0231` fica restrito a campo opcional/receptor aninhado.
+- Sem mudança de comportamento em igualdade estrutural, `Display` ou no
+  formato do dump de AST (ADR 0014).
+
 ## [0.1.1] - 2026-09-22
 
 Sprint `fix-0.1.1`. Ritmo de correção: nada aqui adiciona capacidade nova à

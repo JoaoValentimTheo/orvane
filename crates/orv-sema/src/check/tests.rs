@@ -292,14 +292,21 @@ fn compound_assignment_to_an_immutable_reports_e0230() {
 }
 
 #[test]
-fn assigning_to_a_field_is_rejected_as_out_of_scope() {
-    // ADR 0018: field assignment is not supported in 0.1.0-alpha. The sema
-    // rejects it (E0231) so it cannot accept a program the runtime refuses.
+fn assigning_to_a_field_requires_a_mutable_binding() {
+    // ADR 0022: `u.age = 2` is allowed when `u` is a `let mut` binding, but the
+    // binding itself must be mutable, so an immutable one is E0230.
     assert_eq!(
         codes(
             "data User {\n    age: Int,\n}\n\nfn main() {\n    let u = User(age: 1)\n    u.age = 2\n}\n"
         ),
-        vec!["E0231"]
+        vec!["E0230"]
+    );
+}
+
+#[test]
+fn assigning_to_a_field_of_a_mutable_binding_is_allowed() {
+    ok(
+        "data User {\n    age: Int,\n}\n\nfn main() {\n    let mut u = User(age: 1)\n    u.age = 2\n}\n",
     );
 }
 
@@ -308,6 +315,17 @@ fn assigning_to_an_optional_field_is_rejected() {
     assert_eq!(
         codes(
             "data User {\n    email: Str? = none,\n}\n\nfn main() {\n    let mut u = User()\n    u?.email = \"x\"\n}\n"
+        ),
+        vec!["E0231"]
+    );
+}
+
+#[test]
+fn assigning_to_a_nested_field_is_rejected() {
+    // ADR 0022: only a direct binding is a supported place.
+    assert_eq!(
+        codes(
+            "data Inner {\n    age: Int,\n}\ndata Outer {\n    i: Inner,\n}\n\nfn main() {\n    let mut o = Outer(i: Inner(age: 1))\n    o.i.age = 2\n}\n"
         ),
         vec!["E0231"]
     );

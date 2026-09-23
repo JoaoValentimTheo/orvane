@@ -25,4 +25,4 @@ pub use env::Env;
 pub use failure::{Failure, FailureKind, Frame};
 pub use function::{Callable, Closure};
 pub use interpreter::{Control, EvalResult, Interpreter, MAX_CALL_DEPTH};
-pub use value::{MapKey, MapValue, Value, display, repr};
+pub use value::{DataFields, MapKey, MapValue, Value, display, repr};

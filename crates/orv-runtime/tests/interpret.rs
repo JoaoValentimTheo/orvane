@@ -328,6 +328,97 @@ fn a_runtime_error_inside_an_interpolation_has_the_inner_span() {
     );
 }
 
+// --- Mutable data fields (ADR 0022) -----------------------------------------
+
+#[test]
+fn mutating_a_data_field_is_visible_on_the_binding() {
+    let source = "\
+data User { name: Str, age: Int, email: Str? = none }
+
+fn main() {
+    let mut u = User(name: \"Mel\", age: 30)
+    u.age = 99
+    print(u.age)
+    print(u)
+}
+";
+    assert_eq!(
+        run(source),
+        "99\nUser(name: \"Mel\", age: 99, email: none)\n"
+    );
+}
+
+#[test]
+fn data_has_value_semantics_on_assignment() {
+    // ADR 0022: `let b = a` copies. Mutating one binding must not touch the
+    // other, so `b.age` keeps the old value after `a2.age = 99`.
+    let source = "\
+data User { name: Str, age: Int }
+
+fn main() {
+    let a = User(name: \"A\", age: 1)
+    let b = a
+    let mut a2 = a
+    a2.age = 99
+    print(b.age)
+    print(a2.age)
+}
+";
+    assert_eq!(run(source), "1\n99\n");
+}
+
+#[test]
+fn interpolating_a_mutated_field_shows_the_new_value() {
+    let source = "\
+data User { name: Str, age: Int }
+
+fn main() {
+    let mut u = User(name: \"Mel\", age: 30)
+    u.age = 31
+    print(\"age = {u.age}, full = {u}\")
+}
+";
+    assert_eq!(
+        run(source),
+        "age = 31, full = User(name: \"Mel\", age: 31)\n"
+    );
+}
+
+#[test]
+fn a_field_can_be_mutated_inside_a_loop() {
+    let source = "\
+data Counter { n: Int }
+
+fn main() {
+    let mut c = Counter(n: 0)
+    for i in 0..5 {
+        if i == 3 { break }
+        c.n = c.n + 1
+    }
+    print(c.n)
+}
+";
+    assert_eq!(run(source), "3\n");
+}
+
+#[test]
+fn a_data_value_can_be_captured_and_mutated_by_a_closure_binding() {
+    // The closure captures the binding by reference; mutating through the
+    // closure and reading after must agree (value semantics, ADR 0022).
+    let source = "\
+data Counter { n: Int }
+
+fn main() {
+    let mut c = Counter(n: 0)
+    let bump: fn() -> () = () => { c.n = c.n + 1 }
+    bump()
+    bump()
+    print(c.n)
+}
+";
+    assert_eq!(run(source), "2\n");
+}
+
 // --- Control flow -----------------------------------------------------------
 
 #[test]
