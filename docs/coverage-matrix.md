@@ -96,17 +96,19 @@ Sprint `fix-0.1.3`. Cada item da varredura dirigida, com o resultado.
 
 | Item | Construção | Onde é exercitada | Resultado |
 |---|---|---|---|
-| (a) | Interpolação aninhada até milhares de níveis | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, `nested_interpolation_never_overflows` (proptest), `nested_interpolation_never_overflows` no fuzz-bytes | **era bug P0**: `Parser::new_nested` resetava `depth` a 0, então 3000 níveis estouravam a pilha nativa (SIGABRT). Corrigido: o sub-parse **compartilha** o orçamento de profundidade (ADR 0013) e reporta `E0104`. |
+| (a) | Interpolação aninhada até milhares de níveis | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, proptest `nested_interpolation_never_overflows`, proptest `nested_interpolation_agrees`, gerador dedicado no `fuzz-bytes` | **era bug P0**: `Parser::new_nested` resetava `depth` a 0, então 3000 níveis estouravam a pilha nativa (SIGABRT, exit 134 — reproduzido no estado 0.1.2). Corrigido: o sub-parse **compartilha** o orçamento de profundidade (ADR 0013) e reporta `E0104`. |
 | (a) | Interpolação aninhada moderada (20 níveis) aceita | `moderately_nested_interpolation_is_fine` | ok |
-| (b) | N interpolações sequenciais, custo linear | `many_sequential_interpolations_scale_linearly` | verificado, sem bug (50000 partes em ~0,12 s) |
+| (b) | N interpolações sequenciais, custo linear | `many_sequential_interpolations_scale_linearly` | verificado, sem bug (2k→16k partes, razão < 30 — falharia se fosse quadrático) |
 | (c) | Igualdade estrutural de dois `data` independentes | `equality_of_separately_built_data_is_structural_not_identity` | verificado, sem bug (compara conteúdo, não `Rc`) |
 | (c) | Mutar e desmutar um campo mantém a igualdade | idem | verificado, sem bug |
 | (d) | Lambda como valor em campo de `data` conduzindo mutação (ADR 0017) | `a_lambda_in_a_data_field_can_drive_a_field_mutation` | ok |
-| (d) | Mutação + interpolação dentro de lambda chamada (ADR 0021) | `mutation_and_interpolation_happen_inside_a_lambda` | ok |
-| (d) | Campo de `data` que é `enum` unitário, mutado e comparado (ADR 0020) | `a_data_field_holding_a_unit_enum_can_be_mutated_and_compared` | ok |
-| (e) | Falha dependente de dado dentro de `{}` (índice OOB em loop) | `a_data_dependent_failure_inside_an_interpolation_keeps_its_code` | `R0003`, span interno |
-| (e) | Falha dentro de `match` dentro de `{}` | `a_failure_inside_a_match_inside_an_interpolation_keeps_its_code` | `R0001`, span interno |
-| (e) | Chave de mapa ausente dentro de `{}` | `a_missing_map_key_inside_an_interpolation_reports_r0003` | `R0003`, span interno |
+| (d) | Corpo de lambda muta campo e resulta em construtor de variante (ADR 0017 × 0022) | `a_variant_constructor_lambda_can_mutate_a_data_field` | ok |
+| (d) | Mutação + interpolação dentro de lambda chamada (ADR 0021) | `mutation_and_interpolation_happen_inside_a_lambda`; gerador `lambda_mutation_agrees` (com `break`) | ok |
+| (d) | Campo de `data` que é `enum` unitário, mutado e comparado (ADR 0020) | `a_data_field_holding_a_unit_enum_can_be_mutated_and_compared`; gerador `enum_field_mutation_agrees` | ok |
+| (e) | Falha dependente de dado dentro de `{}` (índice OOB em loop) | `a_data_dependent_failure_inside_an_interpolation_keeps_its_code` | `R0003` + span do `xs[i]` interno (assertado) |
+| (e) | Falha dentro de `match` dentro de `{}` | `a_failure_inside_a_match_inside_an_interpolation_keeps_its_code` | `R0001` + span do `1/0` interno (assertado) |
+| (e) | Chave de mapa ausente dentro de `{}` | `a_missing_map_key_inside_an_interpolation_reports_r0003` | `R0003` + span do `m[k]` interno (assertado) |
+| (e) | Divisão por zero direta dentro de `{}` (span deixa de ser só mensagem) | `a_runtime_error_inside_an_interpolation_has_the_inner_span` | `R0001` + span assertado no texto interno |
 
 ## Combinações cruzadas (sprint `fix-0.1.1`)
 

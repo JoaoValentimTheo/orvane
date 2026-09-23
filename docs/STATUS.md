@@ -10,6 +10,17 @@
 Regra (§0.2 item 4 / §11 item 6): uma feature só é **Implemented** se houver
 teste golden que a exercita. Sem teste → `Planned`.
 
+## Correções 0.1.3 (`fix-0.1.3`)
+
+Ritmo de correção sobre a superfície nova da 0.1.2 (interpolação avaliada +
+mutação de campo), zero feature nova. Changelog:
+[`CHANGELOG.md`](../CHANGELOG.md). Achados da auditoria dirigida (itens b–e):
+ver [`coverage-matrix.md`](coverage-matrix.md), seção "Auditoria fix-0.1.3".
+
+| Correção | Teste de regressão | ADR |
+|---|---|---|
+| Interpolação profundamente aninhada estourava a pilha nativa: o sub-parse de `{expr}` criava `Parser` com `depth: 0` e contornava o limite `E0104` | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, `moderately_nested_interpolation_is_fine`, proptests `nested_interpolation_never_overflows` e `nested_interpolation_agrees`, gerador de aninhamento no `fuzz-bytes` | 0013 |
+
 ## Correções 0.1.1 (`fix-0.1.1`)
 
 Ritmo de correção, zero feature nova. Changelog: [`CHANGELOG.md`](../CHANGELOG.md).
