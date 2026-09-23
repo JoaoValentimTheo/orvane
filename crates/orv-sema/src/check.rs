@@ -652,7 +652,7 @@ impl Checker {
     /// Infers the type of an expression, reporting what it can.
     pub fn check_expr(&mut self, expr: &Expr) -> Ty {
         match &expr.kind {
-            ExprKind::Literal(literal) => self.literal_type(literal, expr.span),
+            ExprKind::Literal(literal) => self.check_literal(literal, expr.span),
             ExprKind::Ident(name) => self.ident_type(name, expr.span),
             ExprKind::Paren(inner) => self.check_expr(inner),
             ExprKind::Block(block) => self.check_block(block).unwrap_or(Ty::Unit),
@@ -884,6 +884,23 @@ impl Checker {
             // rule 4 / ADR 0012), so a string is always `Str`.
             Literal::Str(_) => Ty::Str,
         }
+    }
+
+    /// The type of a literal used as an expression.
+    ///
+    /// A string is always `Str` (every value has a `Display`), but each
+    /// interpolated `{expr}` is type-checked here, in the scope where the
+    /// string appears (SPEC §5.1). A reference to an undefined name inside
+    /// `{}` reports the same `E0201` it would outside the string.
+    fn check_literal(&mut self, literal: &Literal, span: orv_syntax::Span) -> Ty {
+        if let Literal::Str(parts) = literal {
+            for part in parts {
+                if let orv_syntax::StrSegment::Expr { expr, .. } = part {
+                    self.check_expr(expr);
+                }
+            }
+        }
+        self.literal_type(literal, span)
     }
 
     /// The type of a name.

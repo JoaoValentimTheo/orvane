@@ -1,12 +1,27 @@
 //! Expression parsing: Pratt precedence (SPEC §5.2.1), postfix and primaries.
 
 use crate::ast::{
-    Arg, BinaryOp, Expr, ExprKind, Literal, MatchArm, Pattern, PatternKind, Type, TypeKind, UnaryOp,
+    Arg, BinaryOp, Expr, ExprKind, Literal, MatchArm, Pattern, PatternKind, StrSegment, Type,
+    TypeKind, UnaryOp,
 };
+use crate::diagnostic::Diagnostic;
 use crate::lexer::{Keyword, StrPart, TokenKind};
 use crate::span::Span;
 
 use super::Parser;
+
+/// Shifts a span by `base` bytes, keeping the same file.
+///
+/// Used when a sub-parse re-lexes an interpolation's text standalone: the token
+/// offsets are relative to that text, so adding the interpolation's start makes
+/// them file-correct.
+fn shift_span(span: Span, base: u32) -> Span {
+    Span::new(
+        span.file,
+        span.start.saturating_add(base),
+        span.end.saturating_add(base),
+    )
+}
 
 /// Binding power of an infix operator, or `None` when the token is not one.
 ///
@@ -811,20 +826,89 @@ impl Parser<'_> {
         }
     }
 
-    /// Prepares the parts of a string literal for the AST.
+    /// Turns the lexer's string parts into AST [`StrSegment`]s.
     ///
-    /// When the `Str` token carries a lexical error it is *best effort*: its
-    /// [`StrPart::Expr`] text may be truncated or still contain the offending
-    /// byte, so it must not be re-lexed, and no parser diagnostic may come from
-    /// it (ADR 0008 amend, rule 4). The guard is the span of the whole token,
-    /// because the lexical diagnostic can point at any byte of the literal.
-    ///
-    /// The parts pass through unchanged, which *is* skipping the sub-parse:
-    /// nothing here re-lexes `src`. The guard is consulted so the decision is
-    /// observable, and it stays the switch a later step must use.
-    pub(crate) fn prepare_str_parts(&self, parts: Vec<StrPart>, token_span: Span) -> Vec<StrPart> {
-        let _subparse_allowed = self.subparse_allowed(token_span);
+    /// Each interpolated `{expr}` is sub-parsed into a real [`Expr`]
+    /// (SPEC §5.1), with every span shifted by the interpolation's start so
+    /// diagnostics point inside the file. When the `Str` token carries a
+    /// lexical error the text is *best effort* (ADR 0008 A) — it may be
+    /// truncated or still hold the offending byte — so it must not be re-lexed
+    /// and is kept as [`StrSegment::Raw`]; nothing here reports a parser
+    /// diagnostic for it (ADR 0008 amend, rule 4).
+    pub(crate) fn prepare_str_parts(
+        &mut self,
+        parts: Vec<StrPart>,
+        token_span: Span,
+    ) -> Vec<StrSegment> {
+        let subparse_allowed = self.subparse_allowed(token_span);
         parts
+            .into_iter()
+            .map(|part| match part {
+                StrPart::Lit(text) => StrSegment::Lit(text),
+                StrPart::Expr { src, span } => {
+                    if subparse_allowed {
+                        match self.subparse_str_expr(&src, span) {
+                            Some(expr) => StrSegment::Expr {
+                                src,
+                                expr: Box::new(expr),
+                            },
+                            // The sub-parse failed and already reported a
+                            // diagnostic; keep the raw text so nothing is lost.
+                            None => StrSegment::Raw(src),
+                        }
+                    } else {
+                        StrSegment::Raw(src)
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// Sub-parses the text of one `{expr}` interpolation.
+    ///
+    /// The text is re-lexed standalone and every span is shifted by
+    /// `start` (the interpolation's byte offset in the file), so the resulting
+    /// AST nodes and diagnostics carry file-correct spans. Returns `None` when
+    /// the sub-expression does not parse; the diagnostic is already recorded.
+    fn subparse_str_expr(&mut self, src: &str, span: Span) -> Option<Expr> {
+        // A lexical error inside the interpolation is the caller's problem:
+        // `subparse_allowed` already gates the whole string token, but a
+        // second guard keeps the invariant local.
+        if !self.subparse_allowed(span) {
+            return None;
+        }
+        let id = span.file;
+        let file = crate::source::SourceFile::new(id, "<interpolation>", src);
+        let (mut tokens, lexical) = crate::lexer::lex(&file);
+        // Lexical diagnostics of the sub-lex are shifted too, and reported so a
+        // bad byte inside `{}` still surfaces.
+        for diagnostic in lexical {
+            let shifted = Diagnostic {
+                primary: shift_span(diagnostic.primary, span.start),
+                labels: diagnostic
+                    .labels
+                    .into_iter()
+                    .map(|label| crate::diagnostic::Label {
+                        span: shift_span(label.span, span.start),
+                        message: label.message,
+                    })
+                    .collect(),
+                ..diagnostic
+            };
+            self.diagnostics.extend_suppressed([shifted]);
+        }
+        for token in &mut tokens {
+            token.span = shift_span(token.span, span.start);
+        }
+
+        let mut sub = Parser::new_nested(&tokens);
+        let expr = sub.expr();
+        // Propagate any diagnostic the sub-parser produced (spans already
+        // shifted because the tokens were).
+        let sub_diagnostics = sub.into_diagnostics();
+        self.diagnostics
+            .extend_suppressed(sub_diagnostics.into_vec());
+        expr
     }
 }
 

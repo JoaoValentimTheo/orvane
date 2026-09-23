@@ -3,7 +3,6 @@
 //! Every node carries a [`Span`] (SPEC §3.4).
 
 use super::{Block, Pattern, Type};
-use crate::lexer::StrPart;
 use crate::span::Span;
 
 /// An expression.
@@ -17,6 +16,38 @@ impl Expr {
     /// Creates an expression node.
     pub const fn new(kind: ExprKind, span: Span) -> Self {
         Self { kind, span }
+    }
+}
+
+/// One piece of a string literal in the AST.
+///
+/// The lexer splits a string into [`StrPart`](crate::lexer::StrPart)s; the
+/// parser sub-parses each interpolated `{expr}` into a real [`Expr`]
+/// (SPEC §5.1). When the token carries a lexical error the raw text is kept as
+/// [`StrSegment::Raw`] instead (ADR 0008 rule 4): nothing is re-lexed and the
+/// part is never evaluated.
+#[derive(Clone, PartialEq, Debug)]
+pub enum StrSegment {
+    /// Literal text with escapes already resolved.
+    Lit(String),
+    /// An interpolated `{expr}`, parsed; its span points inside the file.
+    ///
+    /// `src` is the original text between the braces, kept for the stable AST
+    /// dump (ADR 0014) and for diagnostics.
+    Expr { src: String, expr: Box<Expr> },
+    /// An interpolated `{expr}` kept verbatim because the string token had a
+    /// lexical error, so the text may be truncated or hold the bad byte.
+    Raw(String),
+}
+
+impl StrSegment {
+    /// The source text of an interpolation (parsed or raw). Returns `None` for
+    /// a literal part.
+    pub fn interpolation_src(&self) -> Option<&str> {
+        match self {
+            StrSegment::Expr { src, .. } | StrSegment::Raw(src) => Some(src),
+            StrSegment::Lit(_) => None,
+        }
     }
 }
 
@@ -221,12 +252,12 @@ pub enum Literal {
     Int(i64),
     /// A float literal, already parsed to `f64` by the lexer.
     Float(f64),
-    /// A string literal, with its parts as the lexer produced them.
+    /// A string literal, split into literal and interpolated parts.
     ///
-    /// A part of kind [`StrPart::Expr`] is sub-parsed only when the token has no
-    /// lexical error (ADR 0008 amend, rule 4); the parser guards that with
-    /// [`Diagnostics::should_subparse_expr`](crate::Diagnostics::should_subparse_expr).
-    Str(Vec<StrPart>),
+    /// Interpolated parts are parsed into real expressions unless the string
+    /// token carried a lexical error (ADR 0008 rule 4), in which case they stay
+    /// [`StrSegment::Raw`].
+    Str(Vec<StrSegment>),
     /// `true` / `false`.
     Bool(bool),
     /// The `none` literal.

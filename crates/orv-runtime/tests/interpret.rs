@@ -249,6 +249,85 @@ fn main() {
     assert_eq!(run(source), "0\n1\ndone\n");
 }
 
+// --- String interpolation (SPEC §5.1) ---------------------------------------
+
+#[test]
+fn interpolation_of_every_value_kind_matches_str() {
+    // The acceptance invariant: `print("{x}")` == `print(str(x))` for every
+    // value kind, because both go through `value::display`.
+    let source = "\
+enum Color { Red, Green(Int) }
+data User { name: Str, age: Int, email: Str? = none }
+
+fn main() {
+    print(\"{1}|{str(1)}\")
+    print(\"{1.5}|{str(1.5)}\")
+    print(\"{true}|{str(true)}\")
+    print(\"{none}|{str(none)}\")
+    print(\"{Red}|{str(Red)}\")
+    print(\"{Green(3)}|{str(Green(3))}\")
+    let u = User(name: \"Mel\", age: 30)
+    print(\"{u}|{str(u)}\")
+    print(\"{[1, 2]}|{str([1, 2])}\")
+    print(\"{#{\"a\": 1}}|{str(#{\"a\": 1})}\")
+}
+";
+    assert_eq!(
+        run(source),
+        "1|1\n1.5|1.5\ntrue|true\nnone|none\nRed|Red\nGreen(3)|Green(3)\n\
+         User(name: \"Mel\", age: 30, email: none)|User(name: \"Mel\", age: 30, email: none)\n\
+         [1, 2]|[1, 2]\n#{\"a\": 1}|#{\"a\": 1}\n"
+    );
+}
+
+#[test]
+fn interpolation_concatenates_with_the_literal_text() {
+    let source = "\
+fn main() {
+    let n = 3
+    print(\"n = {n}, twice = {n * 2}!\")
+}
+";
+    assert_eq!(run(source), "n = 3, twice = 6!\n");
+}
+
+#[test]
+fn interpolation_can_nest() {
+    // The lexer already accepted `"{f("{x}")}"`; it must now evaluate.
+    let source = "\
+fn id(s: Str) -> Str { s }
+fn main() {
+    let x = 7
+    print(\"{id(\"{x}\")}\")
+}
+";
+    assert_eq!(run(source), "7\n");
+}
+
+#[test]
+fn an_interpolation_sees_the_scope_around_it() {
+    let source = "\
+fn main() {
+    let outer = 1
+    if true {
+        let inner = 2
+        print(\"{outer}-{inner}\")
+    }
+}
+";
+    assert_eq!(run(source), "1-2\n");
+}
+
+#[test]
+fn a_runtime_error_inside_an_interpolation_has_the_inner_span() {
+    let source = "fn main() {\n    print(\"v={1/0}\")\n}\n";
+    let message = run_failure(source);
+    assert!(
+        message.contains("division by zero"),
+        "expected a division failure, got {message:?}"
+    );
+}
+
 // --- Control flow -----------------------------------------------------------
 
 #[test]

@@ -179,7 +179,7 @@ impl Interpreter {
     /// Evaluates an expression.
     pub fn eval(&mut self, expr: &Expr) -> EvalResult {
         match &expr.kind {
-            ExprKind::Literal(literal) => Ok(literal_value(literal)),
+            ExprKind::Literal(literal) => self.eval_literal(literal),
             ExprKind::Ident(name) => self.eval_ident(name, expr.span),
             ExprKind::Paren(inner) => self.eval(inner),
             ExprKind::Block(block) => self.eval_block_as_expr(block),
@@ -270,6 +270,34 @@ impl Interpreter {
                 expr.span,
             )))),
         }
+    }
+
+    /// Evaluates a literal.
+    ///
+    /// A string concatenates its literal parts with the `Display` of each
+    /// interpolated `{expr}` (SPEC §5.1): `"{x}"` produces exactly what
+    /// `str(x)` produces, because both go through [`value::display`]. A raw
+    /// part (kept when the token had a lexical error) is emitted verbatim.
+    fn eval_literal(&mut self, literal: &Literal) -> EvalResult {
+        let Literal::Str(parts) = literal else {
+            return Ok(literal_value(literal));
+        };
+        let mut text = String::new();
+        for part in parts {
+            match part {
+                orv_syntax::StrSegment::Lit(lit) => text.push_str(lit),
+                orv_syntax::StrSegment::Expr { expr, .. } => {
+                    let value = self.eval(expr)?;
+                    text.push_str(&display(&value));
+                }
+                orv_syntax::StrSegment::Raw(src) => {
+                    text.push('{');
+                    text.push_str(src);
+                    text.push('}');
+                }
+            }
+        }
+        Ok(Value::str(text))
     }
 
     /// Evaluates an identifier: a local binding, a function, or a bare
@@ -1161,13 +1189,12 @@ impl Interpreter {
     }
 }
 
-/// The value of a literal.
+/// The value of a literal in a *pattern* context.
 ///
-/// Interpolation parts are not evaluated in the alpha (ADR 0012): [`StrPart::Lit`]
-/// text is concatenated and `{...}` parts are kept verbatim, so the program's
-/// output still shows what was written.
-///
-/// [`StrPart::Lit`]: orv_syntax::StrPart::Lit
+/// Patterns do not evaluate interpolation: a `Literal::Str` here concatenates
+/// literal text and renders any interpolation part verbatim (its keys
+/// included), which is only ever compared for equality against the scrutinee.
+/// Expressions go through [`Interpreter::eval_literal`] instead.
 fn literal_value(literal: &Literal) -> Value {
     match literal {
         Literal::Int(value) => Value::Int(*value),
@@ -1177,8 +1204,8 @@ fn literal_value(literal: &Literal) -> Value {
             let mut text = String::new();
             for part in parts {
                 match part {
-                    orv_syntax::StrPart::Lit(lit) => text.push_str(lit),
-                    orv_syntax::StrPart::Expr { src, .. } => {
+                    orv_syntax::StrSegment::Lit(lit) => text.push_str(lit),
+                    orv_syntax::StrSegment::Raw(src) | orv_syntax::StrSegment::Expr { src, .. } => {
                         text.push('{');
                         text.push_str(src);
                         text.push('}');

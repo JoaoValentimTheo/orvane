@@ -1,7 +1,7 @@
 //! Expression tests: literals, operators, precedence, lambdas, collections.
 
 use super::{expr_of, main_statements, parse, parse_ok};
-use crate::ast::{BinaryOp, ExprKind, Literal, UnaryOp};
+use crate::ast::{BinaryOp, ExprKind, ItemKind, Literal, StmtKind, StrSegment, UnaryOp};
 
 fn literal(text: &str) -> ExprKind {
     expr_of(text).kind
@@ -453,6 +453,47 @@ fn interpolated_string_parts_are_preserved() {
         panic!("expected a string");
     };
     assert_eq!(parts.len(), 3);
+}
+
+#[test]
+fn an_interpolation_is_sub_parsed_into_an_expr() {
+    // SPEC §5.1: the parser sub-parses each `Expr.src` with shifted spans.
+    let ExprKind::Literal(Literal::Str(parts)) = literal(r#""n={x + 1}""#) else {
+        panic!("expected a string");
+    };
+    let [StrSegment::Lit(text), StrSegment::Expr { src, expr }] = parts.as_slice() else {
+        panic!("expected a literal then a parsed interpolation, got {parts:?}");
+    };
+    assert_eq!(text, "n=");
+    assert_eq!(src, "x + 1");
+    assert!(matches!(expr.kind, ExprKind::Binary { .. }));
+}
+
+#[test]
+fn an_interpolation_span_points_inside_the_file() {
+    // `"{x}"` starts at byte 11 in `fn main() {\n    "..."`; the parsed `x`
+    // must carry a span near that offset, not one relative to the substring.
+    let source = "fn main() {\n    \"{x}\"\n}\n";
+    let program = parse_ok(source);
+    let mut found = None;
+    for item in &program.items {
+        if let ItemKind::Fn(decl) = &item.kind {
+            for statement in &decl.body.statements {
+                if let StmtKind::Expr(expr) = &statement.kind {
+                    if let ExprKind::Literal(Literal::Str(parts)) = &expr.kind {
+                        for part in parts {
+                            if let StrSegment::Expr { expr, .. } = part {
+                                found = Some(expr.span);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let span = found.expect("expected a parsed interpolation");
+    let text = &source[span.start as usize..span.end as usize];
+    assert_eq!(text, "x");
 }
 
 #[test]

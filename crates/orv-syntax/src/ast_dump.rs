@@ -8,9 +8,9 @@ use std::fmt::Write as _;
 
 use crate::ast::{
     Arg, Block, DataDecl, EnumDecl, Expr, ExprKind, FieldDecl, FnDecl, Item, ItemKind, Literal,
-    MatchArm, Param, Pattern, PatternKind, Program, Stmt, StmtKind, Type, TypeKind, VariantDecl,
+    MatchArm, Param, Pattern, PatternKind, Program, Stmt, StmtKind, StrSegment, Type, TypeKind,
+    VariantDecl,
 };
-use crate::lexer::StrPart;
 
 /// Renders a whole program.
 pub fn dump_program(program: &Program) -> String {
@@ -312,8 +312,8 @@ fn literal_text(literal: &Literal) -> String {
             let rendered: Vec<String> = parts
                 .iter()
                 .map(|part| match part {
-                    StrPart::Lit(text) => format!("\"{text}\""),
-                    StrPart::Expr { src, .. } => format!("{{{src}}}"),
+                    StrSegment::Lit(text) => format!("\"{text}\""),
+                    StrSegment::Expr { src, .. } | StrSegment::Raw(src) => format!("{{{src}}}"),
                 })
                 .collect();
             rendered.join(" ")

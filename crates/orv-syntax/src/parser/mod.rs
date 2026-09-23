@@ -77,6 +77,26 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Creates a parser for a nested token stream (an interpolation's
+    /// sub-parse) with no lexical diagnostics of its own.
+    ///
+    /// The caller already shifted the tokens' spans into the outer file, so
+    /// diagnostics from this parser point at the right place.
+    pub(crate) fn new_nested(tokens: &'a [Token]) -> Self {
+        Self {
+            tokens,
+            cursor: 0,
+            diagnostics: Diagnostics::new(std::iter::empty()),
+            depth: 0,
+        }
+    }
+
+    /// Consumes the parser, returning its diagnostics (for a nested parse whose
+    /// diagnostics must be merged into the outer aggregation).
+    pub(crate) fn into_diagnostics(self) -> Diagnostics {
+        self.diagnostics
+    }
+
     /// Parses a whole program (SPEC §5.2 `program`).
     pub fn parse_program(&mut self) -> ParseResult {
         let program = self.program();

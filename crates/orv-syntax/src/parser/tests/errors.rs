@@ -234,4 +234,22 @@ proptest! {
         let text: String = fragments.concat();
         parse_bytes(&text);
     }
+
+    /// The interpolation sub-parse reads arbitrary text between `{}`; it must
+    /// never panic, whatever the content (SPEC §11 item 3). The inner text is
+    /// embedded in a well-formed `print("...")` so the sub-parse is actually
+    /// reached, and quotes/backslashes are neutralized so the outer string
+    /// stays lexically clean.
+    #[test]
+    fn interpolation_subparse_never_panics(inner in any::<String>()) {
+        let safe: String = inner
+            .chars()
+            .map(|c| match c {
+                '"' | '\\' | '{' | '}' | '\n' | '\r' => ' ',
+                other => other,
+            })
+            .collect();
+        let text = format!("fn main() {{\n    print(\"before {{{safe}}} after\")\n}}\n");
+        parse_bytes(&text);
+    }
 }

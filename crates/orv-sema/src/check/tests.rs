@@ -154,6 +154,29 @@ fn accepts_data_construction() {
 }
 
 #[test]
+fn an_interpolation_checks_its_expression_in_scope() {
+    // A name used inside `{}` is an ordinary expression reference: it sees the
+    // variables in scope where the string appears.
+    ok_main("let x = 1\nprint(\"n={x}\")");
+}
+
+#[test]
+fn an_undefined_name_inside_an_interpolation_reports_e0201() {
+    // Same code as the same reference outside a string (SPEC §5.1): no new
+    // diagnostic just because it is inside `{}`.
+    assert_eq!(
+        codes("fn main() {\n    print(\"v={nope}\")\n}\n"),
+        vec!["E0201"]
+    );
+}
+
+#[test]
+fn an_interpolation_of_any_type_is_a_str() {
+    // Every value has a `Display`; no type restriction on the interpolation.
+    ok_main("let xs = [1, 2]\nprint(\"{xs} {none} {true}\")");
+}
+
+#[test]
 fn accepts_enum_and_match() {
     ok(
         "enum Shape { Circle(Float), Rect(Float, Float) }\n\nfn area(s: Shape) -> Float {\n    match s {\n        Circle(r) => 3.14159 * r * r,\n        Rect(w, h) => w * h,\n    }\n}\n\nfn main() {\n    print(area(Circle(1.0)))\n}\n",
