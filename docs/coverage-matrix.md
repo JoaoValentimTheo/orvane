@@ -60,6 +60,36 @@ aponta o arquivo em `tests/golden/`. `examples/` tem os programas idiomáticos.
 | **Enum unitário em lista, iterado, em `match`** | `matrix_m26_enum_in_list`, `examples/enum_flags.orv` | **corrigido nesta sprint** | `matrix_m26_...`, `example_enum_flags` |
 | **Construtor de variante como valor** | `matrix_m27_closure_constructor` | **corrigido nesta sprint** (ADR 0017) | `matrix_m27_...` |
 
+## Features 0.1.2 (interpolação e mutação de campo)
+
+Sprint `feat-0.1.2-interpolation-and-mutation`. Duas features; cada linha roda e
+produz a saída esperada (ou o diagnóstico esperado).
+
+| Construção | Onde é exercitada | Resultado | Golden |
+|---|---|---|---|
+| Interpolação `{expr}` de cada tipo de Value (Int, Float, Str, Bool, enum s/ payload, enum c/ payload, `data`, List, Map, none) | `interpolation_of_every_value_kind_matches_str` | ok; `"{x}"` == `str(x)` | `matrix_m31_interpolation` |
+| Interpolação concatenando com o texto literal | `interpolation_concatenates_with_the_literal_text` | ok | `matrix_m31_interpolation` |
+| Interpolação aninhada `"{f("{x}")}"` | `interpolation_can_nest` | ok (o lexer já aceitava; agora avalia) | — |
+| Interpolação vê o escopo onde aparece (incl. bloco interno) | `an_interpolation_sees_the_scope_around_it` | ok | — |
+| Nome fora de escopo dentro de `{}` | `an_undefined_name_inside_an_interpolation_reports_e0201` | `E0201`, span dentro da interpolação | — |
+| Erro de runtime dentro de `{}` (`"{1/0}"`) | `a_runtime_error_inside_an_interpolation_has_the_inner_span` | `R0001` com span interno | — |
+| Sub-parse de `{...}` com conteúdo hostil nunca panica | `interpolation_subparse_never_panics` (proptest) | ok | — |
+| Mutação de campo em `let mut u` | `mutating_a_data_field_is_visible_on_the_binding` | ok | `matrix_m32_field_mutation` |
+| Semântica de valor: `let b = a`; mutar `a2` não muda `b` | `data_has_value_semantics_on_assignment` | ok | `matrix_m32_field_mutation` |
+| Escrita em campo de `data` imutável | `assigning_to_a_field_requires_a_mutable_binding` | `E0230` | — |
+| Escrita em campo opcional / receptor aninhado | `assigning_to_an_optional_field_is_rejected`, `assigning_to_a_nested_field_is_rejected` | `E0231` | — |
+| `Value::Data` clonado é cópia independente | `cloning_a_data_makes_an_independent_copy` | ok | — |
+
+### Combinações cruzadas com o que já existia
+
+| Combinação (cruza 0.1.2 com feature anterior) | Onde é exercitada | Resultado | Golden |
+|---|---|---|---|
+| Interpolar um campo de `data` **depois** de mutá-lo | `interpolating_a_mutated_field_shows_the_new_value` | ok | `matrix_m32_field_mutation` |
+| Mutar campo dentro de um loop com `break` | `a_field_can_be_mutated_inside_a_loop` | ok | `matrix_m31`/`matrix_m32` |
+| Interpolar dentro de lambda que captura a variável mutada | `a_data_value_can_be_captured_and_mutated_by_a_closure_binding` + `matrix_m32` | ok | `matrix_m32_field_mutation` |
+| Interpolação de um campo mutado dentro de closure | `matrix_m31_interpolation`/`matrix_m32` | ok | ambos |
+| Interpolar `data` cujo campo veio de `for`/`if` | `matrix_m31_interpolation` | ok | `matrix_m31_interpolation` |
+
 ## Combinações cruzadas (sprint `fix-0.1.1`)
 
 Cada linha cruza **duas** construções que isoladamente já tinham golden, mas cuja

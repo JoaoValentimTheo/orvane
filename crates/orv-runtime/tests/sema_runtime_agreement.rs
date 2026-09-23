@@ -282,6 +282,62 @@ fn user_type_collections_program(in_list: bool, in_map: bool, enum_list: bool) -
     }
 }
 
+/// Builds a program that interpolates every value kind a generator can make.
+///
+/// `"{expr}"` must produce the same text as `str(expr)` (ADR 0022 / 0.1.2);
+/// the invariant here is only that the sema and runtime agree, which the
+/// generator checks by keeping every interpolation well-typed and in scope.
+fn interpolation_program(use_data: bool, use_enum: bool, use_collection: bool) -> Program {
+    let mut decl = String::new();
+    let mut body = String::new();
+    body.push_str("    let n = 7\n");
+    body.push_str("    print(\"n={n} and {n + 1}\")\n");
+    body.push_str("    print(\"{1.5} {true} {none}\")\n");
+    if use_data {
+        decl.push_str("data P {\n    x: Int,\n}\n\n");
+        body.push_str("    let p = P(x: 3)\n");
+        body.push_str("    print(\"p={p} x={p.x}\")\n");
+    }
+    if use_enum {
+        decl.push_str("enum E {\n    A,\n    B(Int),\n}\n\n");
+        body.push_str("    let e = B(2)\n");
+        body.push_str("    print(\"e={e}\")\n");
+    }
+    if use_collection {
+        body.push_str("    let xs = [1, 2]\n");
+        body.push_str("    print(\"xs={xs} len={len(xs)}\")\n");
+    }
+
+    Program {
+        source: format!("{decl}fn main() {{\n{body}}}\n"),
+        description: format!("interpolation data={use_data} enum={use_enum} coll={use_collection}"),
+    }
+}
+
+/// Builds a program that mutates a `data` field and reads it back.
+///
+/// The generator keeps the binding `let mut` when it mutates, so the sema
+/// accepts; the invariant is that the runtime then runs without a
+/// "does not know this construct" failure.
+fn field_mutation_program(mutable: bool, read_back: bool, in_loop: bool) -> Program {
+    let binding = if mutable { "let mut u" } else { "let u" };
+    let mut body = format!("    {binding} = P(x: 1)\n");
+    if mutable {
+        body.push_str("    u.x = 2\n");
+    }
+    if read_back {
+        body.push_str("    print(u.x)\n");
+    }
+    if in_loop {
+        body.push_str("    for i in 0..3 {\n        print(i)\n    }\n");
+    }
+
+    Program {
+        source: format!("data P {{\n    x: Int,\n}}\n\nfn main() {{\n{body}}}\n"),
+        description: format!("field mutation mutable={mutable} read={read_back} loop={in_loop}"),
+    }
+}
+
 /// Runs one generated program and asserts the sema/runtime agreement invariant.
 ///
 /// Returns `Ok(())` when the program is consistent (either the sema rejects it,
@@ -412,5 +468,26 @@ proptest! {
         enum_list in any::<bool>(),
     ) {
         assert_agreement(&user_type_collections_program(in_list, in_map, enum_list))?;
+    }
+
+    /// Interpolation of the generated value kinds agrees between the layers.
+    #[test]
+    fn interpolation_agrees(
+        use_data in any::<bool>(),
+        use_enum in any::<bool>(),
+        use_collection in any::<bool>(),
+    ) {
+        assert_agreement(&interpolation_program(use_data, use_enum, use_collection))?;
+    }
+
+    /// Field mutation on a `let mut` binding agrees; an immutable one is
+    /// rejected by the sema, which is also consistent.
+    #[test]
+    fn field_mutation_agrees(
+        mutable in any::<bool>(),
+        read_back in any::<bool>(),
+        in_loop in any::<bool>(),
+    ) {
+        assert_agreement(&field_mutation_program(mutable, read_back, in_loop))?;
     }
 }
