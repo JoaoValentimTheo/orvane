@@ -58,6 +58,24 @@ fn main(body: &str) -> String {
     format!("fn main() {{\n{body}\n}}\n")
 }
 
+/// Asserts that a failure's span covers `needle` inside `source`, i.e. the
+/// diagnostic points at the inner expression (here: inside `{...}`), not at
+/// the string literal or the whole program (item (e)).
+fn assert_inner_span(source: &str, span: orv_syntax::Span, needle: &str) {
+    let start = source
+        .find(needle)
+        .unwrap_or_else(|| panic!("{needle:?} not found in {source:?}")) as u32;
+    let end = start + needle.len() as u32;
+    let text = source
+        .get(span.start as usize..span.end as usize)
+        .unwrap_or("<span out of source bounds>");
+    assert_eq!(
+        (span.start, span.end, text),
+        (start, end, needle),
+        "expected the span of the inner expression {needle:?}"
+    );
+}
+
 // --- Basics -----------------------------------------------------------------
 
 #[test]
@@ -321,11 +339,19 @@ fn main() {
 #[test]
 fn a_runtime_error_inside_an_interpolation_has_the_inner_span() {
     let source = "fn main() {\n    print(\"v={1/0}\")\n}\n";
-    let message = run_failure(source);
-    assert!(
-        message.contains("division by zero"),
-        "expected a division failure, got {message:?}"
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::DivisionByZero,
+        "got {failure:?}"
     );
+    assert!(
+        failure.message.contains("division by zero"),
+        "expected a division failure, got {failure:?}"
+    );
+    assert_inner_span(source, failure.span, "1/0");
 }
 
 #[test]
@@ -352,6 +378,7 @@ fn main() {
         "got {failure:?}"
     );
     assert!(failure.message.contains("out of bounds"), "got {failure:?}");
+    assert_inner_span(source, failure.span, "xs[i]");
 }
 
 #[test]
@@ -362,11 +389,19 @@ fn main() {
     print(\"v={match x { 0 => 1/0, _ => x }}\")
 }
 ";
-    let message = run_failure(source);
-    assert!(
-        message.contains("division by zero"),
-        "expected a division failure, got {message:?}"
+    let program = parse_ok(source);
+    let outcome = driver::run(&program);
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(
+        failure.kind,
+        orv_runtime::FailureKind::DivisionByZero,
+        "got {failure:?}"
     );
+    assert!(
+        failure.message.contains("division by zero"),
+        "expected a division failure, got {failure:?}"
+    );
+    assert_inner_span(source, failure.span, "1/0");
 }
 
 #[test]
@@ -386,6 +421,7 @@ fn main() {
         orv_runtime::FailureKind::MissingKey,
         "got {failure:?}"
     );
+    assert_inner_span(source, failure.span, "m[k]");
 }
 
 #[test]
@@ -579,6 +615,31 @@ fn main() {
 }
 ";
     assert_eq!(run(source), "1\n2\n2\n");
+}
+
+#[test]
+fn a_variant_constructor_lambda_can_mutate_a_data_field() {
+    // The lambda's own body mutates the captured `data` field and evaluates to
+    // a variant constructor application (ADR 0017) in the same expression
+    // (ADR 0022), then the result is stored back through field assignment.
+    let source = "\
+enum Shape { Circle(Int), Dot }
+
+data Box { n: Int, last: Shape }
+
+fn main() {
+    let mut b = Box(n: 0, last: Dot)
+    let step: fn(Int) -> Shape = r => {
+        b.n = b.n + 1
+        Circle(r + b.n)
+    }
+    b.last = step(1)
+    print(b.n)
+    print(b.last)
+    print(\"{b.last}\")
+}
+";
+    assert_eq!(run(source), "1\nCircle(2)\nCircle(2)\n");
 }
 
 #[test]
