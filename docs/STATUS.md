@@ -20,6 +20,7 @@ ver [`coverage-matrix.md`](coverage-matrix.md), seção "Auditoria fix-0.1.3".
 | Correção | Teste de regressão | ADR |
 |---|---|---|
 | Interpolação profundamente aninhada estourava a pilha nativa: o sub-parse de `{expr}` criava `Parser` com `depth: 0` e contornava o limite `E0104` | `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`, `moderately_nested_interpolation_is_fine`, proptests `nested_interpolation_never_overflows` e `nested_interpolation_agrees`, gerador de aninhamento no `fuzz-bytes` | 0013 |
+| Diagnóstico dentro de interpolação aninhada (≥ 2 níveis) apontava para offset errado do arquivo (`StrPart::Expr` embutido não era deslocado no sub-parse) | `an_undefined_name_in_a_nested_interpolation_points_at_the_name` (sema), asserção de span no teste do `E0104` profundo | — |
 
 ## Correções 0.1.1 (`fix-0.1.1`)
 

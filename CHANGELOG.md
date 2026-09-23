@@ -19,17 +19,27 @@ Sprint `fix-0.1.3`: correção de bugs na superfície introduzida pela 0.1.2
   Regressão: `deeply_nested_interpolation_reports_e0104_instead_of_overflowing`,
   o proptest `nested_interpolation_never_overflows` e a estrutura no
   `fuzz-bytes`.
+- **Diagnóstico dentro de interpolação aninhada (≥ 2 níveis) apontava para o
+  lugar errado do arquivo.** O loop que desloca os tokens do sub-parse corrigia
+  o span do token `Str`, mas não os `StrPart::Expr` embutidos — que a sub-lex
+  produziu relativos ao texto capturado —, então o nível seguinte sub-parseava
+  contra offsets errados: `E0104` saía como `1:3` e o `E0201` de `{nope}`
+  apontava `5..9` em vez de `56..60`. Os parts embutidos agora são deslocados
+  junto com o token (SPEC §5.1: span é o byte range dentro do arquivo).
+  Regressão: `an_undefined_name_in_a_nested_interpolation_points_at_the_name`
+  (sema; provado falhando antes do fix) e a asserção de span no teste do
+  `E0104` profundo.
 
 ### Notas
 
-- A auditoria da superfície nova (itens b–e) **não** encontrou mais bugs:
-  custo O(n) para N interpolações sequenciais, igualdade estrutural de `data`
-  independente (inclusive mutar/desmutar), mutação cruzando as fronteiras de
-  lambda/variante/`break` e span/código de erro vindos de dentro da
-  interpolação estão todos cobertos por teste novo (ver
+- A auditoria da superfície nova encontrou os dois bugs corrigidos acima (item
+  a e span do item e). Os demais itens — custo linear (b), igualdade
+  estrutural pós-`RefCell` (c), mutação cruzando lambda/variante/`break` (d) e
+  código **e** span das falhas de runtime dentro de `{}` em nível único (e) —
+  foram **verificados, sem bug**, cada um coberto por teste novo (ver
   `docs/coverage-matrix.md`, seção "Auditoria fix-0.1.3").
 - Nenhuma issue aberta no repositório no início da sprint (mesma situação da
-  0.1.1); o P0 veio da auditoria dirigida, não de reporte de usuário.
+  0.1.1); os dois bugs vieram da auditoria dirigida, não de reporte de usuário.
 
 ## [0.1.2] - 2026-09-23
 

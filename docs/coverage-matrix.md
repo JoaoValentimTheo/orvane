@@ -109,6 +109,7 @@ Sprint `fix-0.1.3`. Cada item da varredura dirigida, com o resultado.
 | (e) | Falha dentro de `match` dentro de `{}` | `a_failure_inside_a_match_inside_an_interpolation_keeps_its_code` | `R0001` + span do `1/0` interno (assertado) |
 | (e) | Chave de mapa ausente dentro de `{}` | `a_missing_map_key_inside_an_interpolation_reports_r0003` | `R0003` + span do `m[k]` interno (assertado) |
 | (e) | Divisão por zero direta dentro de `{}` (span deixa de ser só mensagem) | `a_runtime_error_inside_an_interpolation_has_the_inner_span` | `R0001` + span assertado no texto interno |
+| (e) | Span de diagnóstico dentro de interpolação **aninhada** (2+ níveis) | `an_undefined_name_in_a_nested_interpolation_points_at_the_name` (sema), asserção de span no teste do `E0104` profundo | **era bug**: o sub-parse deslocava o token `Str` mas não os `StrPart::Expr` embutidos → `E0201` em `5..9` em vez de `56..60` (e `E0104:1:3`). Corrigido: os parts são deslocados junto (SPEC §5.1). |
 
 ## Combinações cruzadas (sprint `fix-0.1.1`)
 
