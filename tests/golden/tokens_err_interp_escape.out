@@ -1,0 +1,6 @@
+5:1 Kw(let)
+5:5 Ident(a)
+5:7 Eq
+5:9 Str[Expr("f(\\\"a\\\")")]
+6:1 Newline
+6:1 Eof

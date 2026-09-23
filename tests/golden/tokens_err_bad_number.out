@@ -1,0 +1,16 @@
+4:1 Kw(let)
+4:5 Ident(x)
+4:7 Eq
+4:9 Int(0)
+5:1 Newline
+5:1 Kw(let)
+5:5 Ident(y)
+5:7 Eq
+5:9 Int(0)
+6:1 Newline
+6:1 Kw(let)
+6:5 Ident(z)
+6:7 Eq
+6:9 Int(0)
+7:1 Newline
+7:1 Eof

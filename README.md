@@ -14,12 +14,15 @@ PyPI (`use py numpy as np`) e pode ser chamado de Python (`import orvane`).
 - **CLI:** `orv` · **extensão:** `.orv` · **módulo Python:** `orvane`
 - Especificação completa: [`docs/SPEC.md`](docs/SPEC.md)
 
-## Status: pré-alfa — M0 concluído
+## Status: pré-alfa — M1 concluído
 
-O M0 entrega **apenas a fundação**: workspace com as 6 crates, `Span`,
-`SourceMap`, `Diagnostic` com renderização `ariadne`, harness golden e CI.
-**A linguagem ainda não existe**: não há lexer, parser, sema nem interpretador —
-`orv version` é o único subcomando funcional.
+O M0 entregou a fundação (workspace, `Span`, `SourceMap`, `Diagnostic`, harness
+golden, CI). O M1 entrega o **lexer** de §5.1: tokens, strings com interpolação,
+comentários aninhados, a regra de `Newline` por pilha de delimitadores e os
+diagnósticos `E0001`–`E0006`.
+
+**Ainda não há linguagem executável**: parser, sema e interpretador são M2+.
+Os subcomandos funcionais são `orv version` e o interno `orv tokens <f.orv>`.
 
 O que está pronto e testado está em [`docs/STATUS.md`](docs/STATUS.md); a
 tabela usa "Implemented" só quando há teste golden que exercita a feature.
@@ -29,6 +32,12 @@ tabela usa "Implemented" só quando há teste golden que exercita a feature.
 ```console
 $ cargo run -p orv-cli -- version
 orv 0.1.0 (orvane 0.1.0)
+
+$ cargo run -p orv-cli -- tokens tests/golden/tokens_block_lambda.orv
+4:1 Ident(xs)
+4:3 Dot
+4:4 Ident(map)
+...
 ```
 
 ## Rodando o gate

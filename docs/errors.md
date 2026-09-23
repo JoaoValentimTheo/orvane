@@ -15,17 +15,59 @@ Todo código novo **deve** ser adicionado aqui com exemplo mínimo (§8.2).
 
 | Código | Mensagem | Exemplo mínimo | Status |
 |---|---|---|---|
-| `E0001` | caractere inválido | `§` | M1 |
-| `E0002` | string não terminada | `"abc` | M1 |
-| `E0003` | comentário não fechado | `/* abc` | M1 |
-| `E0004` | escape inválido | `"a\q"` | M1 |
+| `E0001` | caractere inválido | `§` · `@` · `!` (sozinho) · identificador não-ASCII | **M1** |
+| `E0002` | string não terminada | `"abc` · `"abc<newline>` · `"{a` | **M1** |
+| `E0003` | comentário não fechado | `/* abc` | **M1** |
+| `E0004` | escape inválido | `"a\q"` · `"a\<quebra de linha>` | **M1** |
+| `E0005` | literal numérico inválido | `0x` · `0b` · `1__0` · `1_` · `1e` · `9223372036854775808` · `1e999` | **M1** |
+| `E0006` | interpolação inválida | `"a}b"` · `"{}"` · `"{f(\"a\")}"` | **M1** |
+
+Notas de comportamento (M1):
+
+- `E0001`: o caractere inválido é consumido e o lexer **continua**; `!` só é
+  válido como `!=`. Caractere não-ASCII fora de string/comentário leva o help
+  "identifiers are ASCII-only in v0.1". **Só o primeiro BOM é ignorado** (por
+  `SourceMap::add`); um segundo BOM é `E0001`.
+- `E0002`: uma quebra de linha crua dentro da string também é `E0002`; use `\n`.
+  Uma interpolação não fechada gera **um único** `E0002`, o mais externo.
+- `E0003`: comentários de bloco são aninháveis; um `/*` sem `*/` consome o resto
+  do arquivo e é reportado uma única vez.
+- `E0004`: a mensagem usa `escape_debug`, então nunca contém caractere de
+  controle cru. `\` seguido de **quebra de linha** é `E0004` com span apenas
+  sobre a `\`, e a quebra **não** é consumida (segue valendo como fim de linha)
+  — o mesmo vale dentro de `{...}` e de string aninhada (ADR 0009), de modo que
+  LF, CRLF e CR produzem os mesmos diagnósticos.
+- `E0005`: a mensagem não distingue os casos; o `help` diz o motivo
+  (`_` fora de dígitos, prefixo sem dígitos, literal fora de `i64`, ou
+  `float literal out of range` para `1e309`/`1e999`).
+- `E0006`: `}` sem `{` (help "use }}"), interpolação vazia `{}`, e `\` dentro de
+  `{...}` (help: escreva `{f("a")}` sem escape) — **um** diagnóstico por
+  interpolação, não um por barra.
+
+**Tokens de melhor esforço (ADR 0008).** Todo erro léxico emite, além do
+diagnóstico, um token que cobre o trecho lido: `Str(parts)` com as partes já
+lidas para `E0002`/`E0004`/`E0006`, e `Int(0)`/`Float(0.0)` para `E0005`. A
+stream continua cobrindo o arquivo; a validade é decidida pelos diagnósticos.
+
+### Ordem e supressão de diagnósticos (ADR 0008, emenda do M2)
+
+Quando há erro léxico, o programa **não** para no primeiro caractere ruim:
+
+1. diagnósticos léxicos são emitidos **primeiro**;
+2. o parser roda mesmo assim, mas um diagnóstico do parser cujo span primário
+   **intersecta** o de um diagnóstico léxico é **suprimido** (a construção veio
+   de um token de melhor esforço);
+3. `StrPart::Expr.src` de um `Str` que contém diagnóstico léxico **não** é
+   re-parseado;
+4. com qualquer erro — léxico ou sintático — `orv check` não roda sema e
+   `orv run` não executa.
 
 ## E01xx — parser
 
 | Código | Mensagem | Exemplo mínimo | Status |
 |---|---|---|---|
 | `E0101` | token inesperado | `fn () {}` | M2 |
-| `E0102` | esperado X, encontrado Y | `let = 1` | M2 |
+| `E0102` | esperado X, encontrado Y | `let = 1` · `1.2.3` (esperado identificador após `.`) | M2 |
 | `E0103` | bloco não fechado | `fn main() {` | M2 |
 
 ## E02xx — resolução

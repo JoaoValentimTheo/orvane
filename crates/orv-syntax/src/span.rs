@@ -56,6 +56,20 @@ impl Span {
     pub const fn is_empty(self) -> bool {
         self.start == self.end
     }
+
+    /// Whether `self` and `other` overlap, treating a zero-width span as a
+    /// single point.
+    ///
+    /// Spans in different files never intersect. A point span counts as inside
+    /// `other` when it lies in `[other.start, other.end]`, so a `Newline` point
+    /// at the end of an erroneous token is still suppressed (ADR 0008 amenda).
+    pub const fn intersects(self, other: Span) -> bool {
+        // Compare the raw ids: `FileId`'s derived `PartialEq` is not `const`.
+        if self.file.0 != other.file.0 {
+            return false;
+        }
+        self.start <= other.end && other.start <= self.end
+    }
 }
 
 #[cfg(test)]
@@ -94,6 +108,43 @@ mod tests {
         assert_eq!(p.start, 42);
         assert_eq!(p.end, 42);
         assert_eq!(p.len(), 0);
+    }
+
+    #[test]
+    fn intersects_detects_overlap() {
+        let a = Span::new(file(), 10, 20);
+        assert!(a.intersects(Span::new(file(), 15, 25)), "partial overlap");
+        assert!(a.intersects(Span::new(file(), 12, 14)), "contained");
+        assert!(a.intersects(a), "identical");
+        assert!(a.intersects(Span::new(file(), 0, 10)), "touching at start");
+        assert!(a.intersects(Span::new(file(), 20, 30)), "touching at end");
+        assert!(!a.intersects(Span::new(file(), 0, 9)), "before");
+        assert!(!a.intersects(Span::new(file(), 21, 30)), "after");
+    }
+
+    #[test]
+    fn intersects_treats_a_point_span_as_inside() {
+        // A `Newline` point at an erroneous token's end must be suppressed.
+        let token = Span::new(file(), 10, 20);
+        assert!(Span::point(file(), 10).intersects(token));
+        assert!(Span::point(file(), 15).intersects(token));
+        assert!(Span::point(file(), 20).intersects(token));
+        assert!(!Span::point(file(), 21).intersects(token));
+        assert!(!Span::point(file(), 9).intersects(token));
+    }
+
+    #[test]
+    fn intersects_requires_the_same_file() {
+        let a = Span::new(FileId(0), 0, 10);
+        let b = Span::new(FileId(1), 0, 10);
+        assert!(!a.intersects(b));
+        assert!(!Span::point(FileId(1), 5).intersects(a));
+    }
+
+    #[test]
+    fn intersects_two_point_spans() {
+        assert!(Span::point(file(), 7).intersects(Span::point(file(), 7)));
+        assert!(!Span::point(file(), 7).intersects(Span::point(file(), 8)));
     }
 
     #[test]
